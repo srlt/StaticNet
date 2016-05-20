@@ -1,0 +1,7 @@
+# Ignore everything in this directory
+*
+# Except this file, Makefile and sources
+!.gitignore
+!Makefile
+!*.cpp
+!*.hpp
