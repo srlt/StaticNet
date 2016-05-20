@@ -98,7 +98,7 @@ private:
 public:
     /** Constructor.
     **/
-    UniformRandomizer(): device(), engine(device()), distrib(0, 0.01) {
+    UniformRandomizer(): device(), engine(device()), distrib(-0.01, 0.01) {
     }
 public:
     /** Get a random number.
