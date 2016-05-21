@@ -121,6 +121,9 @@ namespace StaticNet {
 **/
 class Transfert final {
 private:
+    constexpr static val_t diff_delta = 0.0001; // Delta for derivative estimation
+private:
+    nat_t  count; // Nb points
     val_t  x_min; // Min input
     val_t  x_max; // Max input
     val_t  delta; // dx between points
@@ -134,16 +137,20 @@ private:
     **/
     enum class select { base, diff }; // Function type selector
     template<select func> val_t get(val_t x) const {
-        if (unlikely(x <= x_min)) {
-            return x_min;
+        if (unlikely(x < x_min)) {
+            return (func == select::diff ? 0 : tbase[0]);
         } else if (unlikely(x >= x_max)) {
-            return x_max;
-        } // Linear interpolation to do
+            return (func == select::diff ? 0 : tbase[count - 1]);
+        } // Else linear interpolation
         nat_t i = static_cast<nat_t>((x - x_min) / delta);
-        val_t f = (x - (x_min + static_cast<val_t>(i) * delta)) / delta;
-        val_t y_a = (func == select::diff ? tdiff : tbase)[i];
-        val_t y_b = (func == select::diff ? tdiff : tbase)[i + 1]; // Index in table since x < x_max
-        return y_a + (y_b - y_a) * f;
+        if (unlikely(i + 1 >= count)) { // Due to floating-point imprecision
+            return tbase[count - 1];
+        } else {
+            val_t f = (x - (x_min + static_cast<val_t>(i) * delta)) / delta;
+            val_t y_a = (func == select::diff ? tdiff : tbase)[i];
+            val_t y_b = (func == select::diff ? tdiff : tbase)[i + 1];
+            return y_a + (y_b - y_a) * f;
+        }
     }
 public:
     /** Constructor.
@@ -168,13 +175,13 @@ public:
         return get<select::diff>(x);
     }
     /** (Re)set the transfert function.
+     * @param trans Transfert function
      * @param min   Min input
      * @param max   Max input
      * @param prec  Amount of points
-     * @param trans Transfert function
      * @return True if the operation is a success, false otherwise
     **/
-    bool set(val_t min, val_t max, nat_t prec, val_t trans(val_t)) {
+    bool set(val_t trans(val_t), val_t min, val_t max, nat_t prec) {
         if (unlikely(min >= max || prec < 2)) // Basic checks
             return false;
         { // Points table allocation
@@ -196,9 +203,10 @@ public:
                 tbase[i++] = trans(x);
             i = 0;
             for (val_t x = min; i < prec; x += delta) // Diff
-                tdiff[i++] = (trans(x + delta) - trans(x - delta)) / (2 * delta);
+                tdiff[i++] = (trans(x + diff_delta / 2) - trans(x - diff_delta / 2)) / diff_delta;
         }
         { // Basic finalization
+            count = prec;
             x_min = min;
             x_max = max;
         }

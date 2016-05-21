@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
     using namespace StaticNet;
 
     Transfert sigmoid;
-    if (!sigmoid.set(-5, 5, 1000, [](val_t x) { return tanhf(x); })) {
+    if (!sigmoid.set([](val_t x) { return tanhf(x); }, -5, 5, 1000)) {
         std::cout << "Unable to set the transfert function" << std::endl;
         return 1;
     }
