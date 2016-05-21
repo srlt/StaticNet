@@ -55,50 +55,70 @@ int main(int argc, char** argv) {
         network.randomize(randomizer);
     }
     { // Training
-        val_t const eta = 0.01;
+        val_t const eta = 0.05;
         val_t const err_limit = 0.001;
         val_t const iter_limit = 1000000;
-        nat_t i = 0;
-        while (true) { // Training
-            val_t avgerr = 0; // Average square error
+
+        nat_t nb_iter = 0;
+        while (true) { // (Bad) training
+            val_t avg_err = 0; // Average square error distance
             Vector<1> expected;
             Vector<1> error;
 
             expected = {-0.7};
             network.correct({-1, -1}, expected, eta, sigmoid, error);
-            avgerr += error.get(0) * error.get(0);
+            avg_err += error * error;
 
             expected = {+0.7};
             network.correct({-1, +1}, expected, eta, sigmoid, error);
-            avgerr += error.get(0) * error.get(0);
+            avg_err += error * error;
 
             expected = {+0.7};
             network.correct({+1, -1}, expected, eta, sigmoid, error);
-            avgerr += error.get(0) * error.get(0);
+            avg_err += error * error;
 
             expected = {-0.7};
             network.correct({+1, +1}, expected, eta, sigmoid, error);
-            avgerr += error.get(0) * error.get(0);
+            avg_err += error * error;
 
-            if (avgerr < err_limit || i > iter_limit) { // Arbitrary limit
-                std::cout << "avgerr = " << avgerr / 4 << std::endl;
+            avg_err /= 4;
+            if (avg_err < err_limit || nb_iter >= iter_limit) {
+                std::cout << "nb_iter = " << nb_iter << std::endl
+                          << "avg_err = " << avg_err << std::endl;
                 network.print(std::cout);
                 break;
             }
-            i++;
+            nb_iter++;
         }
         std::cout << std::endl;
     }
     { // Test (on training set...)
+        Vector<2> input;
         Vector<1> output;
-        network.compute({-1, -1}, sigmoid, output);
-        std::cout << "{-1, -1} -> " << output.get(0) << std::endl;
-        network.compute({-1, +1}, sigmoid, output);
-        std::cout << "{-1, +1} -> " << output.get(0) << std::endl;
-        network.compute({+1, -1}, sigmoid, output);
-        std::cout << "{+1, -1} -> " << output.get(0) << std::endl;
-        network.compute({+1, +1}, sigmoid, output);
-        std::cout << "{+1, +1} -> " << output.get(0) << std::endl;
+
+        network.compute(input = {-1, -1}, sigmoid, output);
+        input.print(std::cout);
+        std::cout << "\t-> ";
+        output.print(std::cout);
+        std::cout << std::endl;
+
+        network.compute(input = {-1, +1}, sigmoid, output);
+        input.print(std::cout);
+        std::cout << "\t-> ";
+        output.print(std::cout);
+        std::cout << std::endl;
+
+        network.compute(input = {+1, -1}, sigmoid, output);
+        input.print(std::cout);
+        std::cout << "\t-> ";
+        output.print(std::cout);
+        std::cout << std::endl;
+
+        network.compute(input = {+1, +1}, sigmoid, output);
+        input.print(std::cout);
+        std::cout << "\t-> ";
+        output.print(std::cout);
+        std::cout << std::endl;
     }
 
     return 0;
