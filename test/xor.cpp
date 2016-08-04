@@ -30,6 +30,10 @@
 // Internal headers
 #include <staticnet.hpp>
 
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+
+using namespace StaticNet;
+
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Declarations ▔
 // ▁ Trivial XOR test ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
@@ -41,8 +45,6 @@
  * @return Always zero
 **/
 int main(int argc, char** argv) {
-    using namespace StaticNet;
-
     Transfert sigmoid;
     if (!sigmoid.set(tanhf, -5, 5, 1000)) {
         std::cout << "Unable to set the transfert function" << std::endl;
@@ -50,78 +52,76 @@ int main(int argc, char** argv) {
     }
 
     Network<2, 2, 1> network(sigmoid);
-    std::cout << "Network size = " << network.size() << " bytes" << std::endl;
-
     { // Initialization
         UniformRandomizer<std::ratio<1, 100>> randomizer;
         network.randomize(randomizer);
     }
+
+    std::cout << "Raw network: ";
+    network.print(std::cout);
+    std::cout << std::endl;
+
+    std::cout << std::endl;
     { // Training
-        val_t const eta = 0.05;
-        val_t const err_limit = 0.001;
-        val_t const iter_limit = 1000000;
+        Learning<2, 1> discipline; // Learning discipline
+        { // Discipline initialization
+            Vector<2> input;
+            Vector<1> output;
 
-        nat_t nb_iter = 0;
-        while (true) { // (Bad) training
-            val_t avg_err = 0; // Average square error distance
-            Vector<1> expected;
-            Vector<1> error;
-
-            expected = {-0.7};
-            network.correct({-1, -1}, expected, eta, error);
-            avg_err += error * error;
-
-            expected = {+0.7};
-            network.correct({-1, +1}, expected, eta, error);
-            avg_err += error * error;
-
-            expected = {+0.7};
-            network.correct({+1, -1}, expected, eta, error);
-            avg_err += error * error;
-
-            expected = {-0.7};
-            network.correct({+1, +1}, expected, eta, error);
-            avg_err += error * error;
-
-            avg_err /= 4;
-            if (avg_err < err_limit || nb_iter >= iter_limit) {
-                std::cout << "nb_iter = " << nb_iter << std::endl
-                          << "avg_err = " << avg_err << std::endl;
-                network.print(std::cout);
-                break;
-            }
-            nb_iter++;
+            discipline.add(input = {-1, -1}, output = {-1}, 0.1);
+            discipline.add(input = {+1, -1}, output = {+1}, 0.1);
+            discipline.add(input = {-1, +1}, output = {+1}, 0.1);
+            discipline.add(input = {+1, +1}, output = {-1}, 0.1);
         }
+
+        std::cout << "Learning discipline: ";
+        discipline.print(std::cout);
         std::cout << std::endl;
+
+        std::cout << "Learning...";
+        std::cout.flush();
+        std::cout << (discipline.correct(network, 0.01, 100000) ? " done." : " fail.") << std::endl;
     }
+    std::cout << std::endl;
+
+    std::cout << "Network: ";
+    network.print(std::cout);
+    std::cout << std::endl;
+
+    std::cout << std::endl << "Results: {" << std::endl;
     { // Test (on training set...)
         Vector<2> input;
         Vector<1> output;
 
         network.compute(input = {-1, -1}, output);
+        std::cout << "\t";
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
         std::cout << std::endl;
 
         network.compute(input = {-1, +1}, output);
+        std::cout << "\t";
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
         std::cout << std::endl;
 
         network.compute(input = {+1, -1}, output);
+        std::cout << "\t";
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
         std::cout << std::endl;
 
         network.compute(input = {+1, +1}, output);
+        std::cout << "\t";
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
         std::cout << std::endl;
     }
+    std::cout << "}" << std::endl;
 
     return 0;
 }
