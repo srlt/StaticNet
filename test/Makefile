@@ -2,7 +2,7 @@ BIN = ../bin
 SRC = ../src
 
 CC     = g++
-CFLAGS = -Wall -Wfatal-errors -O2 -std=c++14 -I$(SRC) -fno-exceptions -fnothrow-opt -fno-extern-tls-init -fno-rtti -fstrict-enums -nostdlib
+CFLAGS = -Wall -O2 -std=c++14 -I$(SRC)
 LFLAGS =
 
 .PHONY: clean

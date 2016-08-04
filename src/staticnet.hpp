@@ -32,19 +32,17 @@
 #include <ostream>
 #include <random>
 #include <ratio>
-#include <unordered_map>
+#include <list>
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
 namespace StaticNet {
 
 // Types used
-typedef float         val_t; // Any floating-point value
-typedef uint_fast32_t nat_t; // Any natural number
+using val_t = float;         // Any floating-point value
+using nat_t = uint_fast32_t; // Any natural number
 
-}
-
-// Null value
+// Null value (I prefer null over nullptr)
 auto const null = nullptr;
 
 /** Specify a proposition as 'likely true'.
@@ -70,6 +68,8 @@ auto const null = nullptr;
     #define unlikely(prop) \
         (prop)
 #endif
+
+}
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Declarations ▔
@@ -112,6 +112,7 @@ public:
     UniformRandomizer(): device(), engine(device()), distrib(-ratio(), ratio()) {}
 public:
     /** Get a random number.
+     * @return A random number
     **/
     val_t get() {
         return distrib(engine);
@@ -774,17 +775,87 @@ template<nat_t input_dim, nat_t output_dim> class Learning final {
     static_assert(input_dim > 0, "Invalid input vector dimension");
     static_assert(output_dim > 0, "Invalid output vector dimension");
 private:
-    using Input  = Vector<input_dim>;  // Input vector type
-    using Output = Vector<output_dim>; // Output vector type
+    /** Input vector type.
+    **/
+    using Input  = Vector<input_dim>;
+    /** Output vector type.
+    **/
+    using Output = Vector<output_dim>;
+    /** Input, and expected output, with error margin.
+    **/
+    class Constraint final {
+    private:
+        Input  input;  // Input vector
+        Output output; // Expected output vector
+        val_t  margin; // Quadratic error tolerated margin
+    public:
+        /** Build a new constraint.
+         * @param input  Input vector
+         * @param output Expected output vector
+         * @param margin Tolerated margin on quadratic error
+        **/
+        Constraint(Input& input, Output& output, val_t margin): input(input), output(output), margin(margin) {}
+    public:
+        /** Check equality between input vectors.
+         * @param input Input vector to compare with
+         * @return True if the stored input vector is equal to the given one, false otherwise
+        **/
+        bool match(Input& input) {
+            return this->input == input;
+        }
+        /** Correct the network one time.
+         * @param network  Neural network to correct
+         * @param eta      Correction factor
+         * @param max_iter Maximum number of iterations (0 for no limit)
+         * @return True if the correction process terminated before reaching 'max_iter', false otherwise
+        **/
+        template<nat_t... implicit_dims> bool correct(Network<input_dim, implicit_dims..., output_dim>& network, val_t eta, nat_t max_iter = 0) {
+            /// TODO: Correction
+            return false;
+        }
+    };
 private:
-    std::unordered_map<Input*, std::pair<Output*, val_t>> constraints; // Constraints set
+    std::list<Constraint> constraints; // Constraints set
+public:
+    /** Add a constraint to the discipline, not checked for duplicate.
+     * @param input  Input vector
+     * @param output Expected output vector
+     * @param margin Tolerated margin on quadratic error
+    **/
+    void add(Input& input, Output& output, val_t margin) {
+        constraints.emplace(constraints.end(), input, output, margin);
+    }
+    /** Tell if a constraint exists based on the input vector.
+     * @param input Input vector of the constraint to find
+     * @return True if a matching constraint has been found, false otherwise
+    **/
+    bool has(Input& input) {
+        for (Constraint& constraint: constraints)
+            if (constraint.match(input))
+                return true;
+        return false;
+    }
+    /** Remove a constraint based on the input vector.
+     * @param input Input vector of the constraint to remove
+    **/
+    void remove(Input& input) {
+        nat_t pos = 0;
+        for (Constraint& constraint: constraints) {
+            if (constraint.match(input)) {
+                constraints.erase(pos);
+                return;
+            }
+            pos++;
+        }
+    }
 public:
     /** Correct the network so that each output is near enough from its expected output.
      * @param network  Neural network to correct
+     * @param eta      Correction factor
      * @param max_iter Maximum number of iterations (0 for no limit)
-     * @return True if the correction process terminated before 'max_iter', false otherwise
+     * @return True if the correction process terminated before reaching 'max_iter', false otherwise
     **/
-    template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, nat_t max_iter = 0) {
+    template<nat_t... implicit_dims> bool correct(Network<input_dim, implicit_dims..., output_dim>& network, val_t eta, nat_t max_iter = 0) {
         /// TODO: Correction
         return false;
     }
