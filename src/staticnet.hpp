@@ -128,6 +128,8 @@ public:
 
 namespace StaticNet {
 
+/// TODO: (optional) Draw function (binary PPM)
+
 /** Transfert function.
 **/
 class Transfert final {
@@ -785,16 +787,16 @@ private:
     **/
     class Constraint final {
     private:
-        Input  input;  // Input vector
-        Output output; // Expected output vector
-        val_t  margin; // Quadratic error tolerated margin
+        Input  input;    // Input vector
+        Output expected; // Expected output vector
+        val_t  margin;   // Quadratic error tolerated margin
     public:
         /** Build a new constraint.
-         * @param input  Input vector
-         * @param output Expected output vector
-         * @param margin Tolerated margin on quadratic error
+         * @param input       Input vector
+         * @param expected    Expected output vector
+         * @param sqrt_margin Square root of the tolerated margin on quadratic error (should not be 0)
         **/
-        Constraint(Input& input, Output& output, val_t margin): input(input), output(output), margin(margin) {}
+        Constraint(Input& input, Output& expected, val_t sqrt_margin): input(input), expected(expected), margin(sqrt_margin * sqrt_margin) {}
     public:
         /** Check equality between input vectors.
          * @param input Input vector to compare with
@@ -803,15 +805,38 @@ private:
         bool match(Input& input) {
             return this->input == input;
         }
-        /** Correct the network one time.
-         * @param network  Neural network to correct
-         * @param eta      Correction factor
-         * @param max_iter Maximum number of iterations (0 for no limit)
-         * @return True if the correction process terminated before reaching 'max_iter', false otherwise
+        /** Correct the network one time, if needed.
+         * @param network Neural network to correct
+         * @param eta     Correction factor
+         * @return True if on bounds, false if a correction has been applied
         **/
-        template<nat_t... implicit_dims> bool correct(Network<input_dim, implicit_dims..., output_dim>& network, val_t eta, nat_t max_iter = 0) {
-            /// TODO: Correction
+        template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, val_t eta) {
+            Output output; // Output vector
+            network.compute(input, output);
+            { // Check for bounds
+                val_t err = 0; // Quadratic error sum
+                for (nat_t i = 0; i < output_dim; i++) { // Compute 'err'
+                    val_t diff = expected.get(i) - output.get(i);
+                    err += diff * diff;
+                }
+                if (err <= margin) // In bounds
+                    return true;
+            }
+            network.correct(input, expected, eta, output);
             return false;
+        }
+    public:
+
+    public:
+        /** Print constraint to the given stream.
+         * @param ostr Output stream
+        **/
+        void print(std::ostream& ostr) {
+            ostr << "{ ";
+            input.print(ostr);
+            ostr << ", ";
+            expected.print(ostr);
+            ostr << ", " << margin << " }";
         }
     };
 private:
@@ -848,6 +873,11 @@ public:
             pos++;
         }
     }
+    /** Remove all constraints.
+    **/
+    void reset() {
+        constraints.clear();
+    }
 public:
     /** Correct the network so that each output is near enough from its expected output.
      * @param network  Neural network to correct
@@ -855,9 +885,37 @@ public:
      * @param max_iter Maximum number of iterations (0 for no limit)
      * @return True if the correction process terminated before reaching 'max_iter', false otherwise
     **/
-    template<nat_t... implicit_dims> bool correct(Network<input_dim, implicit_dims..., output_dim>& network, val_t eta, nat_t max_iter = 0) {
-        /// TODO: Correction
+    template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, val_t eta, nat_t const max_iter = 0) {
+        for (nat_t iter = 0; max_iter == 0 || iter < max_iter; iter++) {
+            bool success = true;
+            for (Constraint& constraint: constraints)
+                success = constraint.correct(network, eta) && success; // 'success' must be second member in order to ensure call to '.correct'
+            if (success)
+                return true;
+        }
         return false;
+    }
+public:
+    /** Print learning discipline to the given stream.
+     * @param ostr Output stream
+    **/
+    void print(std::ostream& ostr) {
+        if (constraints.empty()) {
+            ostr << "{}";
+            return;
+        }
+        ostr << "{" << std::endl << "\t";
+        bool first = true;
+        for (Constraint& constraint: constraints) {
+            if (first) {
+                first = false;
+                constraint.print(ostr);
+            } else {
+                ostr << "," << std::endl << "\t";
+                constraint.print(ostr);
+            }
+        }
+        ostr << std::endl << "}";
     }
 };
 
