@@ -31,6 +31,8 @@
 #include <initializer_list>
 #include <ostream>
 #include <random>
+#include <ratio>
+#include <unordered_map>
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
@@ -43,8 +45,7 @@ typedef uint_fast32_t nat_t; // Any natural number
 }
 
 // Null value
-#undef  null
-#define null nullptr
+auto const null = nullptr;
 
 /** Specify a proposition as 'likely true'.
  * @param prop Proposition likely true
@@ -89,8 +90,18 @@ public:
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
 /** Uniform distribution randomizer.
+ * @param Ratio Uniform distribution over [-ratio(), +ratio()]
 **/
-class UniformRandomizer final: public Randomizer {
+template<class Ratio> class UniformRandomizer final: public Randomizer {
+private:
+    /** Compute floating-point ratio from the std::ratio type "compatible" template parameter.
+     * @return Floating-point representation of the ratio
+    **/
+    constexpr val_t ratio() {
+        constexpr val_t ret = (val_t) Ratio::num / (val_t) Ratio::den;
+        static_assert(ret > 0, "'Ratio' must be a positive value");
+        return ret;
+    }
 private:
     std::random_device                    device;
     std::default_random_engine            engine;
@@ -98,8 +109,7 @@ private:
 public:
     /** Constructor.
     **/
-    UniformRandomizer(): device(), engine(device()), distrib(-0.01, 0.01) {
-    }
+    UniformRandomizer(): device(), engine(device()), distrib(-ratio(), ratio()) {}
 public:
     /** Get a random number.
     **/
@@ -155,8 +165,7 @@ private:
 public:
     /** Constructor.
     **/
-    Transfert(): tbase(null) {
-    }
+    Transfert(): tbase(null) {}
     /** Destructor.
     **/
     ~Transfert() {
@@ -186,7 +195,7 @@ public:
             return false;
         { // Points table allocation
             if (tbase) // Points table freeing (if already exists)
-                ::free(tbase);
+                ::free(static_cast<void*>(tbase));
             void* addr = ::malloc(2 * prec * sizeof(val_t)); // Both tables
             if (!addr) { // Allocation failure
                 tbase = null;
@@ -218,6 +227,78 @@ public:
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Transfert function ▔
+// ▁ Input/Output serializer ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+
+namespace StaticNet {
+namespace Serializer {
+
+/** Abstract input serializer class.
+**/
+class Input {
+public:
+    /** Load one value, in order of writing.
+     * @return Value loaded
+    **/
+    virtual val_t load() = 0;
+};
+
+/** Abstract output serializer class.
+**/
+class Output {
+public:
+    /** Store one value.
+     * @param Value stored
+    **/
+    virtual void store(val_t) = 0;
+};
+
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+
+/** Input serializer based on a stream.
+**/
+class StreamInput final: public Input {
+private:
+    std::istream& istream; // Input stream
+public:
+    /** Build a simple input stream.
+     * @param istream Input stream to use
+    **/
+    StreamInput(std::istream& istream): istream(istream) {}
+public:
+    /** Load one value.
+     * @return value Value stored
+    **/
+    val_t load() {
+        val_t value;
+        istream >> value;
+        return value;
+    }
+};
+
+/** Output serializer based on a stream.
+**/
+class StreamOutput final: public Output {
+private:
+    std::ostream& ostream; // Output stream
+public:
+    /** Build a simple output stream.
+     * @param ostream Output stream to use
+    **/
+    StreamOutput(std::ostream& ostream): ostream(ostream) {}
+public:
+    /** Store one value.
+     * @param value Value stored
+    **/
+    void store(val_t value) {
+        ostream << value;
+    }
+};
+
+} }
+
+// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Input/Output serializer ▔
 // ▁ Simple vector ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
@@ -233,8 +314,7 @@ private:
 public:
     /** Uninitialized constructor.
     **/
-    Vector() {
-    }
+    Vector() {}
     /** Copy constructor.
      * @param copy Vector to copy
     **/
@@ -299,25 +379,38 @@ public:
             sum += get(i) * x.get(i);
         return sum;
     }
+    /** Vector comparison.
+     * @param x Vector to compare
+     * @return True if equal, false otherwise
+    **/
+    bool operator==(Vector<dim> const& x) const {
+        for (nat_t i = 0; i < dim; i++)
+            if (x.get(i) != get(i))
+                return false;
+        return true;
+    }
 public:
-    /** Load vector data from dump.
-     * @param dump Dump to read
-     * @return New dump address
+    /** Return the size of the structure.
+     * @return Size of the structure, in bytes
     **/
-    val_t* load(val_t* dump) {
-        for (nat_t i = 0; i < dim; i++)
-            set(i, dump[i]);
-        return dump + dim * sizeof(val_t);
+    constexpr size_t size() {
+        return dim * sizeof(val_t);
     }
-    /** Store vector data to dump.
-     * @param dump Dump to write
-     * @return New dump address
+    /** Load vector data.
+     * @param input Serialized input
     **/
-    val_t* store(val_t* dump) {
+    void load(Serializer::Input& input) {
         for (nat_t i = 0; i < dim; i++)
-            dump[i] = get(i);
-        return dump + dim * sizeof(val_t);
+            set(i, input.load());
     }
+    /** Store vector data.
+     * @param output Serialized output
+    **/
+    void store(Serializer::Output& output) {
+        for (nat_t i = 0; i < dim; i++)
+            output.store(get(i));
+    }
+public:
     /** Print vector to the given stream.
      * @param ostr Output stream
     **/
@@ -383,24 +476,27 @@ public:
         return err;
     }
 public:
-    /** Load neuron data from dump.
-     * @param dump Dump to read
-     * @return New dump address
+    /** Return the size of the structure.
+     * @return Size of the structure, in bytes
     **/
-    val_t* load(val_t* dump) {
-        dump = weight.load(dump);
-        bias = *dump;
-        return dump + 1;
+    constexpr size_t size() {
+        return weight.size() + sizeof(val_t);
     }
-    /** Store neuron data to dump.
-     * @param dump Dump to write
-     * @return New dump address
+    /** Load neuron data.
+     * @param input Serialized input
     **/
-    val_t* store(val_t* dump) {
-        dump = weight.store(dump);
-        *dump = bias;
-        return dump + 1;
+    void load(Serializer::Input& input) {
+        weight.load(input);
+        bias = input.load();
     }
+    /** Store vector data.
+     * @param output Serialized output
+    **/
+    void store(Serializer::Output& output) {
+        weight.store(output);
+        output.store(bias);
+    }
+public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
@@ -421,7 +517,13 @@ template<nat_t input_dim, nat_t output_dim> class Layer final {
     static_assert(input_dim > 0, "Invalid input vector dimension");
     static_assert(output_dim > 0, "Invalid output vector dimension");
 private:
+    Transfert const& trans; // Transfert function to use
     Neuron<input_dim> neurons[output_dim]; // Neurons
+public:
+    /** Layer constructor.
+     * @param trans Transfert function to use
+    **/
+    Layer(Transfert const& trans): trans(trans) {}
 public:
     /** Randomize the layer.
      * @param rand Randomizer to use
@@ -432,11 +534,10 @@ public:
     }
     /** Compute the output vector of the layer.
      * @param input   Input vector
-     * @param trans   Transfert function
      * @param output  Output vector
      * @param out_sum Sum of weighted inputs vector (output, optional)
     **/
-    void compute(Vector<input_dim> const& input, Transfert const& trans, Vector<output_dim>& output, Vector<output_dim>* out_sum = null) {
+    void compute(Vector<input_dim> const& input, Vector<output_dim>& output, Vector<output_dim>* out_sum = null) {
         if (out_sum) {
             for (nat_t i = 0; i < output_dim; i++) {
                 val_t sum;
@@ -453,10 +554,9 @@ public:
      * @param sums      Sum of weighted inputs vector
      * @param error     Sum of weighted errors vector
      * @param eta       Correction factor
-     * @param trans     Transfert function
      * @param error_out Sum of weighted errors vector (optional)
     **/
-    void correct(Vector<input_dim> const& input, Vector<output_dim> const& sums, Vector<output_dim> const& error, val_t eta, Transfert const& trans, Vector<input_dim>* error_out = null) {
+    void correct(Vector<input_dim> const& input, Vector<output_dim> const& sums, Vector<output_dim> const& error, val_t eta, Vector<input_dim>* error_out = null) {
         if (error_out) { // Error vector asked
             Vector<output_dim> errors; // Neuron errors
             for (nat_t i = 0; i < output_dim; i++)
@@ -473,24 +573,30 @@ public:
         }
     }
 public:
-    /** Load layer data from dump.
-     * @param dump Dump to read
-     * @return New dump address
+    /** Return the size of the structure.
+     * @return Size of the structure, in bytes
     **/
-    val_t* load(val_t* dump) {
+    constexpr size_t size() {
+        size_t size = 0;
         for (nat_t i = 0; i < output_dim; i++)
-            dump = neurons[i].load(dump);
-        return dump;
+            size += neurons[i].size();
+        return size;
     }
-    /** Store layer data to dump.
-     * @param dump Dump to write
-     * @return New dump address
+    /** Load layer data.
+     * @param input Serialized input
     **/
-    val_t* store(val_t* dump) {
+    void load(Serializer::Input& input) {
         for (nat_t i = 0; i < output_dim; i++)
-            dump = neurons[i].store(dump);
-        return dump;
+            neurons[i].load(input);
     }
+    /** Store vector data.
+     * @param output Serialized output
+    **/
+    void store(Serializer::Output& output) {
+        for (nat_t i = 0; i < output_dim; i++)
+            neurons[i].store(output);
+    }
+public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
@@ -517,6 +623,11 @@ private:
     Layer<input_dim, inter_dim>       layer;  // Input layer
     Network<inter_dim, output_dim...> layers; // Output network
 public:
+    /** Network constructor.
+     * @param trans Transfert function to use
+    **/
+    Network(Transfert const& trans): layer(trans), layers(trans) {}
+public:
     /** Randomize the network.
      * @param rand Randomizer to use
     **/
@@ -526,45 +637,50 @@ public:
     }
     /** Compute the output vector of the network.
      * @param input  Input vector
-     * @param trans  Transfert function
      * @param output Output vector
     **/
-    template<nat_t implicit_dim> void compute(Vector<input_dim> const& input, Transfert const& trans, Vector<implicit_dim>& output) {
+    template<nat_t implicit_dim> void compute(Vector<input_dim> const& input, Vector<implicit_dim>& output) {
         Vector<inter_dim> local_output; // Local layer output vector
-        layer.compute(input, trans, local_output);
-        layers.compute(local_output, trans, output);
+        layer.compute(input, local_output);
+        layers.compute(local_output, output);
     }
     /** Compute then reduce the quadratic error of the network.
      * @param input     Input vector
      * @param expected  Expected output vector
      * @param eta       Correction factor
-     * @param trans     Transfert function
      * @param error     Error vector (output)
      * @param error_out <Reserved>
     **/
-    template<nat_t implicit_dim> void correct(Vector<input_dim> const& input, Vector<implicit_dim> const& expected, val_t eta, Transfert const& trans, Vector<implicit_dim>& error, Vector<input_dim>* error_out = null) {
+    template<nat_t implicit_dim> void correct(Vector<input_dim> const& input, Vector<implicit_dim> const& expected, val_t eta, Vector<implicit_dim>& error, Vector<input_dim>* error_out = null) {
         Vector<inter_dim> local_output;
         Vector<inter_dim> local_sums;
-        layer.compute(input, trans, local_output, &local_sums);
+        layer.compute(input, local_output, &local_sums);
         Vector<inter_dim> local_error;
-        layers.correct(local_output, expected, eta, trans, error, &local_error);
-        layer.correct(input, local_sums, local_error, eta, trans, error_out);
+        layers.correct(local_output, expected, eta, error, &local_error);
+        layer.correct(input, local_sums, local_error, eta, error_out);
     }
 public:
-    /** Load layer data from dump.
-     * @param dump Dump to read
-     * @return New dump address
+    /** Return the size of the structure.
+     * @return Size of the structure, in bytes
     **/
-    val_t* load(val_t* dump) {
-        return layers.load(layer.load(dump));
+    constexpr size_t size() {
+        return layer.size() + layers.size();
     }
-    /** Store layer data to dump.
-     * @param dump Dump to write
-     * @return New dump address
+    /** Load layer data.
+     * @param input Serialized input
     **/
-    val_t* store(val_t* dump) {
-        return layers.store(layer.store(dump));
+    void load(Serializer::Input& input) {
+        layer.load(input);
+        layers.load(input);
     }
+    /** Store vector data.
+     * @param output Serialized output
+    **/
+    void store(Serializer::Output& output) {
+        layer.store(output);
+        layers.store(output);
+    }
+public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
@@ -580,6 +696,11 @@ template<nat_t input_dim, nat_t output_dim> class Network<input_dim, output_dim>
 private:
     Layer<input_dim, output_dim> layer; // Input/output layer
 public:
+    /** Network constructor.
+     * @param trans Transfert function to use
+    **/
+    Network(Transfert const& trans): layer(trans) {}
+public:
     /** Randomize the network.
      * @param rand Randomizer to use
     **/
@@ -588,43 +709,46 @@ public:
     }
     /** Compute the output vector of the network.
      * @param input  Input vector
-     * @param trans  Transfert function
      * @param output Output vector
     **/
-    void compute(Vector<input_dim> const& input, Transfert const& trans, Vector<output_dim>& output) {
-        layer.compute(input, trans, output);
+    void compute(Vector<input_dim> const& input, Vector<output_dim>& output) {
+        layer.compute(input, output);
     }
     /** Compute then reduce the quadratic error of the network.
-     * @param input    Input vector
-     * @param expected Expected output vector
-     * @param eta      Correction factor
-     * @param trans    Transfert function
-     * @param error    Error vector (output)
+     * @param input     Input vector
+     * @param expected  Expected output vector
+     * @param eta       Correction factor
+     * @param error     Error vector (output)
      * @param error_out <Reserved>
     **/
-    void correct(Vector<input_dim> const& input, Vector<output_dim> const& expected, val_t eta, Transfert const& trans, Vector<output_dim>& error, Vector<input_dim>* error_out = null) {
+    void correct(Vector<input_dim> const& input, Vector<output_dim> const& expected, val_t eta, Vector<output_dim>& error, Vector<input_dim>* error_out = null) {
         Vector<output_dim> local_output;
         Vector<output_dim> local_sums;
-        layer.compute(input, trans, local_output, &local_sums);
+        layer.compute(input, local_output, &local_sums);
         for (nat_t i = 0; i < output_dim; i++)
             error.set(i, expected.get(i) - local_output.get(i));
-        layer.correct(input, local_sums, error, eta, trans, error_out);
+        layer.correct(input, local_sums, error, eta, error_out);
     }
 public:
-    /** Load layer data from dump.
-     * @param dump Dump to read
-     * @return New dump address
+    /** Return the size of the structure.
+     * @return Size of the structure, in bytes
     **/
-    val_t* load(val_t* dump) {
-        return layer.load(dump);
+    constexpr size_t size() {
+        return layer.size();
     }
-    /** Store layer data to dump.
-     * @param dump Dump to write
-     * @return New dump address
+    /** Load layer data.
+     * @param input Serialized input
     **/
-    val_t* store(val_t* dump) {
-        return layer.store(dump);
+    void load(Serializer::Input& input) {
+        layer.load(input);
     }
+    /** Store vector data.
+     * @param output Serialized output
+    **/
+    void store(Serializer::Output& output) {
+        layer.store(output);
+    }
+public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
@@ -637,5 +761,38 @@ public:
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Neural Network ▔
+// ▁ Learning discipline ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+
+namespace StaticNet {
+
+/** Learning discipline.
+ * @param input_dim  Input vector dimensions
+ * @param output_dim Output vector dimensions
+**/
+template<nat_t input_dim, nat_t output_dim> class Learning final {
+    static_assert(input_dim > 0, "Invalid input vector dimension");
+    static_assert(output_dim > 0, "Invalid output vector dimension");
+private:
+    using Input  = Vector<input_dim>;  // Input vector type
+    using Output = Vector<output_dim>; // Output vector type
+private:
+    std::unordered_map<Input*, std::pair<Output*, val_t>> constraints; // Constraints set
+public:
+    /** Correct the network so that each output is near enough from its expected output.
+     * @param network  Neural network to correct
+     * @param max_iter Maximum number of iterations (0 for no limit)
+     * @return True if the correction process terminated before 'max_iter', false otherwise
+    **/
+    template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, nat_t max_iter = 0) {
+        /// TODO: Correction
+        return false;
+    }
+};
+
+}
+
+// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Learning discipline ▔
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 #endif

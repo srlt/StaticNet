@@ -44,14 +44,16 @@ int main(int argc, char** argv) {
     using namespace StaticNet;
 
     Transfert sigmoid;
-    if (!sigmoid.set([](val_t x) { return tanhf(x); }, -5, 5, 1000)) {
+    if (!sigmoid.set(tanhf, -5, 5, 1000)) {
         std::cout << "Unable to set the transfert function" << std::endl;
         return 1;
     }
 
-    Network<2, 2, 1> network;
+    Network<2, 2, 1> network(sigmoid);
+    std::cout << "Network size = " << network.size() << " bytes" << std::endl;
+
     { // Initialization
-        UniformRandomizer randomizer;
+        UniformRandomizer<std::ratio<1, 100>> randomizer;
         network.randomize(randomizer);
     }
     { // Training
@@ -66,19 +68,19 @@ int main(int argc, char** argv) {
             Vector<1> error;
 
             expected = {-0.7};
-            network.correct({-1, -1}, expected, eta, sigmoid, error);
+            network.correct({-1, -1}, expected, eta, error);
             avg_err += error * error;
 
             expected = {+0.7};
-            network.correct({-1, +1}, expected, eta, sigmoid, error);
+            network.correct({-1, +1}, expected, eta, error);
             avg_err += error * error;
 
             expected = {+0.7};
-            network.correct({+1, -1}, expected, eta, sigmoid, error);
+            network.correct({+1, -1}, expected, eta, error);
             avg_err += error * error;
 
             expected = {-0.7};
-            network.correct({+1, +1}, expected, eta, sigmoid, error);
+            network.correct({+1, +1}, expected, eta, error);
             avg_err += error * error;
 
             avg_err /= 4;
@@ -96,25 +98,25 @@ int main(int argc, char** argv) {
         Vector<2> input;
         Vector<1> output;
 
-        network.compute(input = {-1, -1}, sigmoid, output);
+        network.compute(input = {-1, -1}, output);
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
         std::cout << std::endl;
 
-        network.compute(input = {-1, +1}, sigmoid, output);
+        network.compute(input = {-1, +1}, output);
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
         std::cout << std::endl;
 
-        network.compute(input = {+1, -1}, sigmoid, output);
+        network.compute(input = {+1, -1}, output);
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
         std::cout << std::endl;
 
-        network.compute(input = {+1, +1}, sigmoid, output);
+        network.compute(input = {+1, +1}, output);
         input.print(std::cout);
         std::cout << "\t-> ";
         output.print(std::cout);
