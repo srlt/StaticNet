@@ -67,11 +67,12 @@ int main(int argc, char** argv) {
         { // Discipline initialization
             Vector<2> input;
             Vector<1> output;
+            Vector<1> margin;
 
-            discipline.add(input = {-1, -1}, output = {-1}, 0.1);
-            discipline.add(input = {+1, -1}, output = {+1}, 0.1);
-            discipline.add(input = {-1, +1}, output = {+1}, 0.1);
-            discipline.add(input = {+1, +1}, output = {-1}, 0.1);
+            discipline.add(input = {-1, -1}, output = {-1}, margin = {0.1});
+            discipline.add(input = {+1, +1}, output, margin);
+            discipline.add(input = {+1, -1}, output = {+1}, margin);
+            discipline.add(input = {-1, +1}, output, margin);
         }
 
         std::cout << "Learning discipline: ";

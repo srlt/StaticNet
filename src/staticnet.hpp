@@ -786,14 +786,14 @@ private:
     private:
         Input  input;    // Input vector
         Output expected; // Expected output vector
-        val_t  margin;   // Quadratic error tolerated margin
+        Output margin;   // Tolerated margin
     public:
         /** Build a new constraint.
-         * @param input       Input vector
-         * @param expected    Expected output vector
-         * @param sqrt_margin Square root of the tolerated margin on quadratic error (should not be 0)
+         * @param input    Input vector
+         * @param expected Expected output vector
+         * @param margin   Tolerated margin vector
         **/
-        Constraint(Input& input, Output& expected, val_t sqrt_margin): input(input), expected(expected), margin(sqrt_margin * sqrt_margin) {}
+        Constraint(Input& input, Output& expected, Output& margin): input(input), expected(expected), margin(margin) {}
     public:
         /** Check equality between input vectors.
          * @param input Input vector to compare with
@@ -810,17 +810,14 @@ private:
         template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, val_t eta) {
             Output output; // Output vector
             network.compute(input, output);
-            { // Check for bounds
-                val_t err = 0; // Quadratic error sum
-                for (nat_t i = 0; i < output_dim; i++) { // Compute 'err'
-                    val_t diff = expected.get(i) - output.get(i);
-                    err += diff * diff;
+            for (nat_t i = 0; i < output_dim; i++) { // Check for bounds
+                val_t diff = expected.get(i) - output.get(i);
+                if ((diff < 0 ? -diff : diff) > margin.get(i)) { // Out of at least one bound
+                    network.correct(input, expected, eta, output);
+                    return false;
                 }
-                if (err <= margin) // In bounds
-                    return true;
             }
-            network.correct(input, expected, eta, output);
-            return false;
+            return true;
         }
     public:
         /** Print constraint to the given stream.
@@ -831,7 +828,9 @@ private:
             input.print(ostr);
             ostr << ", ";
             expected.print(ostr);
-            ostr << ", " << margin << " }";
+            ostr << ", ";
+            margin.print(ostr);
+            ostr << " }";
         }
     };
 private:
@@ -840,9 +839,9 @@ public:
     /** Add a constraint to the discipline, not checked for duplicate.
      * @param input  Input vector
      * @param output Expected output vector
-     * @param margin Tolerated margin on quadratic error
+     * @param margin Tolerated margin vector
     **/
-    void add(Input& input, Output& output, val_t margin) {
+    void add(Input& input, Output& output, Output& margin) {
         constraints.emplace(constraints.end(), input, output, margin);
     }
     /** Tell if a constraint exists based on the input vector.
