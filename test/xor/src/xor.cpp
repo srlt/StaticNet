@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
 
         std::cout << "Learning...";
         std::cout.flush();
-        std::cout << (discipline.correct(network, 0.01, 100000) ? " done." : " fail.") << std::endl;
+        std::cout << (discipline.correct(network, 0.1, 100000) ? " done." : " fail.") << std::endl;
     }
     std::cout << std::endl;
 

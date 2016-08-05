@@ -14,12 +14,12 @@ CCFLAGS  := -Wall -O2 -std=c11 -I$(HDR)
 CXX      := c++
 CXXFLAGS := -Wall -O2 -std=c++14 -I$(HDR)
 LD       := c++
-LDFLAGS  := 
+LDFLAGS  :=
 
 .PHONY: build run clean
 
 build: $(BIN)
-run:
+run: $(BIN)
 	@$(BIN) $(ARGS)
 clean:
 	$(RM) $(OBJECTS) $(BIN)
@@ -33,4 +33,3 @@ clean:
 
 $(BIN): $(OBJECTS)
 	$(LD) $(LDFLAGS) -o $@ $^
-

@@ -16,7 +16,7 @@
  *
  * @section DESCRIPTION
  *
- * StaticNet: a toy feed-forward neural network implementation with compile-time-known configuration.
+ * A toy, header-only feed-forward neural network implementation with compile-time-known neural network dimensions.
 **/
 
 #ifndef SRC_STATICNET_HPP
@@ -127,8 +127,6 @@ public:
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
 namespace StaticNet {
-
-/// TODO: (optional) Draw function (binary PPM)
 
 /** Transfert function.
 **/
@@ -825,8 +823,6 @@ private:
             network.correct(input, expected, eta, output);
             return false;
         }
-    public:
-
     public:
         /** Print constraint to the given stream.
          * @param ostr Output stream
