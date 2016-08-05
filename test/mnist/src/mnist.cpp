@@ -28,7 +28,6 @@
 #include <stdexcept>
 extern "C" {
 #include <fcntl.h>
-#include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -43,7 +42,7 @@ using namespace StaticNet;
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Declarations ▔
-// ▁ Database ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▁ Constants ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
 // Constants
@@ -51,6 +50,9 @@ constexpr nat_t rows_length = 28; // Image row length
 constexpr nat_t cols_length = 28; // Image col length
 constexpr nat_t input_dim   = rows_length * cols_length; // Input space dimension
 constexpr nat_t output_dim  = 10; // Output space dimension
+val_t (*transfert_function)(val_t) = tanhf; // Transfert function used
+val_t transfert_range = 2; // Difference between max and min
+val_t default_margin = 0.1; // Default margin for the learning discipline
 
 /** Return the digit associated with a dimension id.
  * @param dim Given dimension id
@@ -76,6 +78,11 @@ using Input = Vector<input_dim>;
 **/
 using Output = Vector<output_dim>;
 
+// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Constants ▔
+// ▁ Database ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+
 /** Tests set.
 **/
 class Tests final {
@@ -84,7 +91,7 @@ private:
     **/
     class Image final {
     private:
-        Vector<input_dim> image; // Associated input vector
+        Input image; // Associated input vector
         nat_t label; // Number represented
     public:
         /** Check if the network answered correctly.
@@ -139,18 +146,18 @@ private:
         /** Initialize a vector with such data.
          * @param vector Vector to initialize
         **/
-        void dump(Vector<input_dim>& vector) const {
+        void dump(Input& vector) const {
             for (nat_t i = 0; i < input_dim; i++)
                 vector.set(i, convert(data[i]));
         }
     };
 private:
-    constexpr static uint8_t magic_img[] = { 0x00, 0x00, 0x08, 0x01 }; // Expected magic number for an images file
-    constexpr static uint8_t magic_lab[] = { 0x00, 0x00, 0x08, 0x03 }; // Expected magic number for a labels file
+    uint32_t const magic_img = 0x03080000; // Little-endian presumed
+    uint32_t const magic_lab = 0x01080000; // <Same>
 private:
     File  fd_img; // File descriptor (-1 for none) for the images file
     File  fd_lab; // File descriptor (-1 for none) for the labels file
-    nat_t count; // Remaining images
+    nat_t count;  // Remaining images
 private:
     /** Open file for reading, throw on error.
      * @param path Path to file
@@ -172,14 +179,22 @@ private:
      * @param size   Size to write
      * @param path   Path to file (error message)
     **/
-    void read_file(File& fd, char* data, int size, char const* path) {
-        if (read(fd, data, size) != size) {
-            ::std::string err_str;
-            err_str.append("Unable to read '");
-            err_str.append(path);
-            err_str.append("'");
-            throw ::std::runtime_error(err_str);
-        }
+    void read_file(File& fd, char* data, int size) {
+        if (read(fd, data, size) != size)
+            throw ::std::runtime_error("Unable to read the file");
+    }
+    /** Inverse endianess.
+     * @param UInt  Implicit unsigned integer type
+     * @param value Value to inverse
+     * @return Value inversed
+    **/
+    template<class Uint> Uint endian_inverse(Uint value) {
+        Uint ret;
+        uint8_t* v = static_cast<uint8_t*>(static_cast<void*>(&value));
+        uint8_t* r = static_cast<uint8_t*>(static_cast<void*>(&ret));
+        for (nat_t i = 0; i < sizeof(Uint); i++)
+            r[i] = v[sizeof(Uint) - 1 - i];
+        return ret;
     }
 public:
     /** Open an images file, basic validity checks.
@@ -194,23 +209,23 @@ public:
         uint32_t header_img[4]; // Magic number, image count, row size, column size
         uint32_t header_lab[2]; // Magic number, label count
         { // Basic checks
-            read_file(fd_img, reinterpret_cast<char*>(header_img), sizeof(uint32_t) * 4, path_img);
-            read_file(fd_lab, reinterpret_cast<char*>(header_lab), sizeof(uint32_t) * 2, path_lab);
-            if (memcmp(&header_img[0], magic_img, sizeof(uint32_t))) {
+            read_file(fd_img, reinterpret_cast<char*>(header_img), sizeof(uint32_t) * 4);
+            read_file(fd_lab, reinterpret_cast<char*>(header_lab), sizeof(uint32_t) * 2);
+            if (header_img[0] != magic_img) {
                 ::std::string err_str;
                 err_str.append("'");
                 err_str.append(path_img);
                 err_str.append("' is not an images file");
                 throw ::std::runtime_error(err_str);
             }
-            if (memcmp(&header_lab[0], magic_lab, sizeof(uint32_t))) {
+            if (header_lab[0] != magic_lab) {
                 ::std::string err_str;
                 err_str.append("'");
                 err_str.append(path_lab);
                 err_str.append("' is not an labels file");
                 throw ::std::runtime_error(err_str);
             }
-            if (header_img[2] != rows_length || header_img[3] != cols_length) {
+            if (header_img[2] != endian_inverse<uint32_t>(rows_length) || header_img[3] != endian_inverse<uint32_t>(cols_length)) {
                 ::std::string err_str;
                 err_str.append("'");
                 err_str.append(path_img);
@@ -252,23 +267,48 @@ public:
      * @param label  Associated label
      * @return True if another vector/label exists, false otherwise
     **/
-    bool feed(Vector<input_dim>& vector, nat_t& label) {
+    bool feed(Input& vector, nat_t& label) {
         if (unlikely(count == 0))
             throw ::std::runtime_error("No more image to feed");
-        /// TODO: Feed input vector/label
+        Entry image;
+        uint8_t lbl;
+        read_file(fd_img, static_cast<char*>(static_cast<void*>(&image)), sizeof(decltype(image)));
+        read_file(fd_lab, static_cast<char*>(static_cast<void*>(&lbl)), sizeof(decltype(lbl)));
+        image.dump(vector);
+        label = static_cast<nat_t>(lbl);
         return --count != 0;
     }
 };
+
+// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Database ▔
+// ▁ Network ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+
+/** Initialize an output, and optionaly a margin vector from a label.
+ * @param label  Label to translate
+ * @param output Output vector
+ * @param
+**/
+void output_from_label(nat_t label, Output& output, Output* margin) {
+    for (nat_t i = 0; i < output_dim; i++)
+        output.set(i, i == label ? 1 : -1);
+    if (margin)
+        for (nat_t i = 0; i < output_dim; i++)
+            margin->set(i, i == label ? default_margin : transfert_range);
+}
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
 // Learning discipline used to train networks
 Learning<input_dim, output_dim> discipline;
 
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+
 
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Database ▔
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Network ▔
 // ▁ Entry point ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
@@ -283,7 +323,23 @@ int main(int argc, char** argv) {
             ::std::printf("Usage: %s <training images> <training labels> <test images> <test labels>\n", argc != 0 ? argv[0] : "mnist");
             return 0;
         }
-        /// TODO: Parameters handling
+        try {
+            Loader train(argv[1], argv[2]);
+            Loader test(argv[3], argv[4]);
+            { // Initialize learning discipline
+                Input input;
+                nat_t label;
+                while (train.feed(input, label)) {
+                    Output output;
+                    Output margin;
+                    output_from_label(label, output, &margin);
+                    discipline.add(input, output, margin);
+                }
+            }
+            /// TODO: Store test images
+        } catch (::std::runtime_error& err) {
+            ::std::printf("%s", err.what());
+        }
     }
     return 0;
 }
