@@ -287,6 +287,7 @@ private:
     /** A labelled test image.
     **/
     class Image final {
+        friend Tests; // Direct access for initialization
     private:
         Input image; // Associated input vector
         nat_t label; // Number represented
@@ -302,9 +303,19 @@ private:
         }
     };
 private:
-    ::std::list<Image> tests; // List of test images
+    ::std::list<Image> tests; // List of test images with labels
 public:
-
+    /** Load images and labels from loader object.
+     * @param loader Loader object to load from
+    **/
+    void load(Loader& loader) {
+        while (true) { // At least one element in loader
+            tests.emplace(tests.end());
+            Image& current = tests.back(); // Current picture
+            if (!loader.feed(current.image, current.label))
+                break;
+        }
+    }
 };
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
@@ -344,7 +355,7 @@ int main(int argc, char** argv) {
                     discipline.add(input, output, margin);
                 }
             }
-            /// TODO: Store test images
+            tests.load(test);
         } catch (::std::runtime_error& err) {
             ::std::printf("%s", err.what());
         }
