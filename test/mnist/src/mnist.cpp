@@ -54,6 +54,19 @@ val_t (*transfert_function)(val_t) = tanhf; // Transfert function used
 val_t transfert_range = 2; // Difference between max and min
 val_t default_margin = 0.1; // Default margin for the learning discipline
 
+/** Input vector.
+**/
+using Input = Vector<input_dim>;
+
+/** Output vector.
+**/
+using Output = Vector<output_dim>;
+
+// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Constants ▔
+// ▁ Simple transformations ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+
 /** Return the digit associated with a dimension id.
  * @param dim Given dimension id
  * @return Associated digit
@@ -70,56 +83,42 @@ constexpr nat_t output_digit_to_dim(nat_t digit) {
     return digit;
 }
 
-/** Input vector.
-**/
-using Input = Vector<input_dim>;
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
-/** Output vector.
+/** Initialize an output, and optionaly a margin vector from a label.
+ * @param label  Label to translate
+ * @param output Output vector
+ * @param margin Margin vector (optional)
 **/
-using Output = Vector<output_dim>;
+void label_to_vector(nat_t label, Output& output, Output* margin = null) {
+    for (nat_t i = 0; i < output_dim; i++)
+        output.set(i, i == label ? 1 : -1);
+    if (margin)
+        for (nat_t i = 0; i < output_dim; i++)
+            margin->set(i, i == label ? default_margin : transfert_range);
+}
+
+/** Translate an output vector to a label.
+ * @param output Output vector to translate
+ * @return Associated label
+**/
+nat_t vector_to_label(Output& output) {
+    nat_t larger_dim = 0;
+    nat_t larger_val = output.get(0);
+    for (nat_t i = 1; i < output_dim; i++) {
+        val_t val = output.get(i);
+        if (val > larger_val) {
+            larger_dim = i;
+            larger_val = val;
+        }
+    }
+    return output_dim_to_digit(larger_dim);
+}
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Constants ▔
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Simple transformations ▔
 // ▁ Database ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
-
-/** Tests set.
-**/
-class Tests final {
-private:
-    /** A labelled test image.
-    **/
-    class Image final {
-    private:
-        Input image; // Associated input vector
-        nat_t label; // Number represented
-    public:
-        /** Check if the network answered correctly.
-         * @param network Network to test
-         * @return True on a correct answer, false otherwise
-        **/
-        template<nat_t... implicit_dims> bool check(Network<implicit_dims...>& network) {
-            Output result;
-            network.compute(image, result);
-            { // "Larger" dimension as result
-                nat_t larger_dim = 0;
-                nat_t larger_val = result.get(0);
-                for (nat_t i = 1; i < output_dim; i++) {
-                    val_t val = result.get(i);
-                    if (val > larger_val) {
-                        larger_dim = i;
-                        larger_val = val;
-                    }
-                }
-                return output_dim_to_digit(larger_dim) == label;
-            }
-        }
-    };
-private:
-    ::std::list<Image> tests; // List of test images
-public:
-
-};
 
 /** Data parser from files.
 **/
@@ -131,7 +130,7 @@ private:
     /** Image entry.
      * @param dim Entry total size
     **/
-    class Entry final {
+    class Entry {
     private:
         uint8_t data[input_dim];
     private:
@@ -151,6 +150,7 @@ private:
                 vector.set(i, convert(data[i]));
         }
     };
+    static_assert(!::std::is_polymorphic<Entry>::value, "Class 'Entry' is polymorphic");
 private:
     uint32_t const magic_img = 0x03080000; // Little-endian presumed
     uint32_t const magic_lab = 0x01080000; // <Same>
@@ -280,35 +280,43 @@ public:
     }
 };
 
-// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Database ▔
-// ▁ Network ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
-
-/** Initialize an output, and optionaly a margin vector from a label.
- * @param label  Label to translate
- * @param output Output vector
- * @param
+/** Tests set.
 **/
-void output_from_label(nat_t label, Output& output, Output* margin) {
-    for (nat_t i = 0; i < output_dim; i++)
-        output.set(i, i == label ? 1 : -1);
-    if (margin)
-        for (nat_t i = 0; i < output_dim; i++)
-            margin->set(i, i == label ? default_margin : transfert_range);
-}
+class Tests final {
+private:
+    /** A labelled test image.
+    **/
+    class Image final {
+    private:
+        Input image; // Associated input vector
+        nat_t label; // Number represented
+    public:
+        /** Check if the network answered correctly.
+         * @param network Network to test
+         * @return True on a correct answer, false otherwise
+        **/
+        template<nat_t... implicit_dims> bool check(Network<implicit_dims...>& network) {
+            Output result;
+            network.compute(image, result);
+            return vector_to_label(result) == label;
+        }
+    };
+private:
+    ::std::list<Image> tests; // List of test images
+public:
+
+};
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
 // Learning discipline used to train networks
 Learning<input_dim, output_dim> discipline;
 
-// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
-
-
+// Tests set
+Tests tests;
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Network ▔
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Database ▔
 // ▁ Entry point ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
@@ -332,7 +340,7 @@ int main(int argc, char** argv) {
                 while (train.feed(input, label)) {
                     Output output;
                     Output margin;
-                    output_from_label(label, output, &margin);
+                    label_to_vector(label, output, &margin);
                     discipline.add(input, output, margin);
                 }
             }
