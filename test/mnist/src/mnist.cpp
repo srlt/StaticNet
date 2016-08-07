@@ -29,8 +29,9 @@
 extern "C" {
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/types.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 }
 
 // Internal headers
@@ -127,10 +128,63 @@ private:
     /** File descriptor.
     **/
     using File = int;
+    /** File map.
+    **/
+    class Map final {
+    private:
+        uint8_t* data;   // Data pages, null if none
+        size_t   length; // Mapping length, in bytes
+        size_t   cursor; // Cursor on the mapping
+    public:
+        /** Build a map to a file.
+         * @param path Path to the file to map
+        **/
+        Map(char const* path) {
+            File fd = open(path, O_RDONLY);
+            if (fd == -1) {
+                ::std::string err_str;
+                err_str.append("Unable to open '");
+                err_str.append(path);
+                err_str.append("' for reading");
+                throw ::std::runtime_error(err_str);
+            }
+            length = lseek(fd, 0, SEEK_END); // Get file size, in bytes
+            data = static_cast<uint8_t*>(mmap(null, length, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0));
+            if (data == MAP_FAILED)
+                throw ::std::runtime_error("Mapping failed");
+            close(fd);
+            cursor = 0;
+        }
+        /** Destroy a map.
+        **/
+        ~Map() {
+            if (likely(data))
+                munmap(data, length);
+        }
+    public:
+        /** Return a part of the data as an object of a given class, move the cursor to the next object.
+         * @param Type Type of the returned object
+         * @return Pointer to the object
+        **/
+        template<class Type> Type* read() {
+            static_assert(!::std::is_polymorphic<Type>::value, "Given class is polymorphic");
+            Type* ret = static_cast<Type*>(static_cast<void*>(data + cursor));
+            cursor += sizeof(Type);
+            if (cursor > length)
+                throw ::std::runtime_error("Read out of file bounds");
+            return ret;
+        }
+        /** Only move the cursor for a given number of bytes.
+         * @param delta Number of bytes
+        **/
+        void seek(size_t delta) {
+            cursor += delta;
+        }
+    };
     /** Image entry.
      * @param dim Entry total size
     **/
-    class Entry {
+    class Entry final {
     private:
         uint8_t data[input_dim];
     private:
@@ -150,39 +204,14 @@ private:
                 vector.set(i, convert(data[i]));
         }
     };
-    static_assert(!::std::is_polymorphic<Entry>::value, "Class 'Entry' is polymorphic");
 private:
     uint32_t const magic_img = 0x03080000; // Little-endian presumed
     uint32_t const magic_lab = 0x01080000; // <Same>
 private:
-    File  fd_img; // File descriptor (-1 for none) for the images file
-    File  fd_lab; // File descriptor (-1 for none) for the labels file
+    Map img; // File descriptor (-1 for none) for the images file
+    Map lab; // File descriptor (-1 for none) for the labels file
     nat_t count;  // Remaining images
 private:
-    /** Open file for reading, throw on error.
-     * @param path Path to file
-     * @param fd   File descriptor (output)
-    **/
-    void open_file(char const* path, File& fd) {
-        fd = open(path, O_RDONLY);
-        if (fd == -1) {
-            ::std::string err_str;
-            err_str.append("Unable to open '");
-            err_str.append(path);
-            err_str.append("' for reading");
-            throw ::std::runtime_error(err_str);
-        }
-    }
-    /** Read file, throw on error.
-     * @param fd     File descriptor
-     * @param buffer Buffer to write
-     * @param size   Size to write
-     * @param path   Path to file (error message)
-    **/
-    void read_file(File& fd, char* data, int size) {
-        if (read(fd, data, size) != size)
-            throw ::std::runtime_error("Unable to read the file");
-    }
     /** Inverse endianess.
      * @param UInt  Implicit unsigned integer type
      * @param value Value to inverse
@@ -201,65 +230,35 @@ public:
      * @param path_img Images file to open
      * @param path_lab Labels file to open
     **/
-    Loader(char const* path_img, char const* path_lab): fd_img(-1), fd_lab(-1), count() {
-        { // Open files
-            open_file(path_img, fd_img);
-            open_file(path_lab, fd_lab);
+    Loader(char const* path_img, char const* path_lab): img(path_img), lab(path_lab) {
+        uint32_t (&header_img)[4] = *img.read<uint32_t[4]>(); // Magic number, image count, row size, column size
+        uint32_t (&header_lab)[2] = *lab.read<uint32_t[2]>(); // Magic number, label count
+        if (header_img[2] != endian_inverse<uint32_t>(rows_length) || header_img[3] != endian_inverse<uint32_t>(cols_length)) {
+            ::std::string err_str;
+            err_str.append("'");
+            err_str.append(path_img);
+            err_str.append("' invalid dimensions");
+            throw ::std::runtime_error(err_str);
         }
-        uint32_t header_img[4]; // Magic number, image count, row size, column size
-        uint32_t header_lab[2]; // Magic number, label count
-        { // Basic checks
-            read_file(fd_img, reinterpret_cast<char*>(header_img), sizeof(uint32_t) * 4);
-            read_file(fd_lab, reinterpret_cast<char*>(header_lab), sizeof(uint32_t) * 2);
-            if (header_img[0] != magic_img) {
-                ::std::string err_str;
-                err_str.append("'");
-                err_str.append(path_img);
-                err_str.append("' is not an images file");
-                throw ::std::runtime_error(err_str);
-            }
-            if (header_lab[0] != magic_lab) {
-                ::std::string err_str;
-                err_str.append("'");
-                err_str.append(path_lab);
-                err_str.append("' is not an labels file");
-                throw ::std::runtime_error(err_str);
-            }
-            if (header_img[2] != endian_inverse<uint32_t>(rows_length) || header_img[3] != endian_inverse<uint32_t>(cols_length)) {
-                ::std::string err_str;
-                err_str.append("'");
-                err_str.append(path_img);
-                err_str.append("' invalid dimensions");
-                throw ::std::runtime_error(err_str);
-            }
-            if (header_img[1] != header_lab[1]) {
-                ::std::string err_str;
-                err_str.append("'");
-                err_str.append(path_img);
-                err_str.append("' and '");
-                err_str.append(path_img);
-                err_str.append("' count mismatch");
-                throw ::std::runtime_error(err_str);
-            }
-            count = static_cast<nat_t>(header_img[1]);
-            if (count < 1) {
-                ::std::string err_str;
-                err_str.append("'");
-                err_str.append(path_img);
-                err_str.append("' and '");
-                err_str.append(path_img);
-                err_str.append("' no image");
-                throw ::std::runtime_error(err_str);
-            }
+        if (header_img[1] != header_lab[1]) {
+            ::std::string err_str;
+            err_str.append("'");
+            err_str.append(path_img);
+            err_str.append("' and '");
+            err_str.append(path_img);
+            err_str.append("' count mismatch");
+            throw ::std::runtime_error(err_str);
         }
-    }
-    /** Close the file descriptors, if open.
-    **/
-    ~Loader() {
-        if (fd_img != -1)
-            close(fd_img);
-        if (fd_lab != -1)
-            close(fd_lab);
+        count = static_cast<nat_t>(endian_inverse(header_img[1]));
+        if (count < 1) {
+            ::std::string err_str;
+            err_str.append("'");
+            err_str.append(path_img);
+            err_str.append("' and '");
+            err_str.append(path_img);
+            err_str.append("' no image");
+            throw ::std::runtime_error(err_str);
+        }
     }
 public:
     /** Initialize an input vector and an associated label.
@@ -270,10 +269,8 @@ public:
     bool feed(Input& vector, nat_t& label) {
         if (unlikely(count == 0))
             throw ::std::runtime_error("No more image to feed");
-        Entry image;
-        uint8_t lbl;
-        read_file(fd_img, static_cast<char*>(static_cast<void*>(&image)), sizeof(decltype(image)));
-        read_file(fd_lab, static_cast<char*>(static_cast<void*>(&lbl)), sizeof(decltype(lbl)));
+        Entry& image = *img.read<Entry>();
+        uint8_t& lbl = *lab.read<uint8_t>();
         image.dump(vector);
         label = static_cast<nat_t>(lbl);
         return --count != 0;
@@ -342,6 +339,8 @@ int main(int argc, char** argv) {
             ::std::printf("Usage: %s <training images> <training labels> <test images> <test labels>\n", argc != 0 ? argv[0] : "mnist");
             return 0;
         }
+        ::std::printf("Loading files...");
+        fflush(stdout);
         try {
             Loader train(argv[1], argv[2]);
             Loader test(argv[3], argv[4]);
@@ -357,8 +356,17 @@ int main(int argc, char** argv) {
             }
             tests.load(test);
         } catch (::std::runtime_error& err) {
-            ::std::printf("%s", err.what());
+            ::std::printf(" fail: %s\n", err.what());
         }
+        ::std::printf(" done.\n");
+    }
+    { // Learning phase
+        ::std::printf("Learning phase...\n");
+        /// TODO: Learning phase
+    }
+    { // Testing phase
+        ::std::printf("Testing phase...\n");
+        /// TODO: Testing phase
     }
     return 0;
 }
