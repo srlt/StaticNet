@@ -271,7 +271,7 @@ public:
     **/
     val_t load() {
         val_t value;
-        istream >> value;
+        istream.read(reinterpret_cast<::std::istream::char_type*>(&value), sizeof(val_t));
         return value;
     }
 };
@@ -291,7 +291,7 @@ public:
      * @param value Value stored
     **/
     void store(val_t value) {
-        ostream << value;
+        ostream.write(reinterpret_cast<::std::istream::char_type*>(&value), sizeof(val_t));
     }
 };
 
