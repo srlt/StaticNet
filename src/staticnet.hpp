@@ -26,12 +26,12 @@
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
 // External headers
+#include <algorithm>
 #include <cstdint>
 #include <initializer_list>
 #include <iostream>
 #include <random>
 #include <ratio>
-#include <list>
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
@@ -93,7 +93,7 @@ public:
 **/
 template<class Ratio> class UniformRandomizer final: public Randomizer {
 private:
-    /** Compute floating-point ratio from the std::ratio type "compatible" template parameter.
+    /** Compute floating-point ratio from the ::std::ratio type "compatible" template parameter.
      * @return Floating-point representation of the ratio
     **/
     constexpr val_t ratio() {
@@ -102,9 +102,9 @@ private:
         return ret;
     }
 private:
-    std::random_device                    device;
-    std::default_random_engine            engine;
-    std::uniform_real_distribution<val_t> distrib;
+    ::std::random_device                    device;
+    ::std::default_random_engine            engine;
+    ::std::uniform_real_distribution<val_t> distrib;
 public:
     /** Constructor.
     **/
@@ -148,13 +148,13 @@ private:
     enum class select { base, diff }; // Function type selector
     template<select func> val_t get(val_t x) const {
         if (unlikely(x < x_min)) {
-            return (func == select::diff ? 0 : tbase[0]);
+            return (func == select::diff ? tdiff : tbase)[0];
         } else if (unlikely(x >= x_max)) {
-            return (func == select::diff ? 0 : tbase[count - 1]);
+            return (func == select::diff ? tdiff : tbase)[count - 1];
         } // Else linear interpolation
         nat_t i = static_cast<nat_t>((x - x_min) / delta);
         if (unlikely(i + 1 >= count)) { // Due to floating-point imprecision
-            return tbase[count - 1];
+            return (func == select::diff ? tdiff : tbase)[count - 1];
         } else {
             val_t f = (x - (x_min + static_cast<val_t>(i) * delta)) / delta;
             val_t y_a = (func == select::diff ? tdiff : tbase)[i];
@@ -259,12 +259,12 @@ public:
 **/
 class StreamInput final: public Input {
 private:
-    std::istream& istream; // Input stream
+    ::std::istream& istream; // Input stream
 public:
     /** Build a simple input stream.
      * @param istream Input stream to use
     **/
-    StreamInput(std::istream& istream): istream(istream) {}
+    StreamInput(::std::istream& istream): istream(istream) {}
 public:
     /** Load one value.
      * @return value Value stored
@@ -280,12 +280,12 @@ public:
 **/
 class StreamOutput final: public Output {
 private:
-    std::ostream& ostream; // Output stream
+    ::std::ostream& ostream; // Output stream
 public:
     /** Build a simple output stream.
      * @param ostream Output stream to use
     **/
-    StreamOutput(std::ostream& ostream): ostream(ostream) {}
+    StreamOutput(::std::ostream& ostream): ostream(ostream) {}
 public:
     /** Store one value.
      * @param value Value stored
@@ -325,7 +325,7 @@ public:
     /** Initializer list constructor.
      * @param params Initial values (cardinality must be the dimension of the vector)
     **/
-    Vector(std::initializer_list<val_t> params) {
+    Vector(::std::initializer_list<val_t> params) {
         /// FIXME: Non-constant condition here. Missing a 'correction' brought by C++17 ? See 'http://en.cppreference.com/w/cpp/utility/initializer_list/size' then 'http://en.cppreference.com/w/cpp/iterator/distance'.
         // static_assert(params.size() != dim, "Wrong initializer list size");
         nat_t i = 0;
@@ -361,7 +361,7 @@ public:
      * @param params Initial values (cardinality must be the dimension of the vector)
      * @return Current vector
     **/
-    Vector<dim>& operator=(std::initializer_list<val_t> params) {
+    Vector<dim>& operator=(::std::initializer_list<val_t> params) {
         /// FIXME: Non-constant condition here. Same remark.
         // static_assert(params.size() != dim, "Wrong initializer list size");
         nat_t i = 0;
@@ -414,7 +414,7 @@ public:
     /** Print vector to the given stream.
      * @param ostr Output stream
     **/
-    void print(std::ostream& ostr) {
+    void print(::std::ostream& ostr) {
         ostr << "{ " << get(0);
         for (nat_t i = 1; i < dim; i++)
             ostr << ", " << get(i);
@@ -500,7 +500,7 @@ public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(std::ostream& ostr) {
+    void print(::std::ostream& ostr) {
         ostr << "{ ";
         weight.print(ostr);
         ostr << ", " << bias << " }";
@@ -600,14 +600,14 @@ public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(std::ostream& ostr) {
-        ostr << "{" << std::endl << "\t";
+    void print(::std::ostream& ostr) {
+        ostr << "{" << ::std::endl << "\t";
         neurons[0].print(ostr);
         for (nat_t i = 1; i < output_dim; i++) {
-            ostr << "," << std::endl << "\t";
+            ostr << "," << ::std::endl << "\t";
             neurons[i].print(ostr);
         }
-        ostr << std::endl << "}";
+        ostr << ::std::endl << "}";
     }
 };
 
@@ -684,7 +684,7 @@ public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(std::ostream& ostr) {
+    void print(::std::ostream& ostr) {
         layer.print(ostr);
         ostr << ", ";
         layers.print(ostr);
@@ -752,7 +752,7 @@ public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(std::ostream& ostr) {
+    void print(::std::ostream& ostr) {
         layer.print(ostr);
     }
 };
@@ -823,7 +823,7 @@ private:
         /** Print constraint to the given stream.
          * @param ostr Output stream
         **/
-        void print(std::ostream& ostr) {
+        void print(::std::ostream& ostr) {
             ostr << "{ ";
             input.print(ostr);
             ostr << ", ";
@@ -834,7 +834,13 @@ private:
         }
     };
 private:
-    std::list<Constraint> constraints; // Constraints set
+    ::std::vector<Constraint> constraints; // Constraints set
+    ::std::random_device device; // Random device
+    ::std::default_random_engine engine; // Default engine
+public:
+    /** Build an empty learning discipline.
+    **/
+    Learning(): constraints(), device(), engine(device()) {}
 public:
     /** Add a constraint to the discipline, not checked for duplicate.
      * @param input  Input vector
@@ -873,43 +879,45 @@ public:
         constraints.clear();
     }
 public:
-    /** Correct the network so that each output is near enough from its expected output.
-     * @param network  Neural network to correct
-     * @param eta      Correction factor
-     * @param max_iter Maximum number of iterations (0 for no limit)
-     * @return True if the correction process terminated before reaching 'max_iter', false otherwise
+    /** Correct the network one time, so that each output is near enough from its expected output.
+     * @param network Neural network to correct
+     * @param eta     Correction factor
+     * @return Number of out-bounds constraints
     **/
-    template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, val_t eta, nat_t const max_iter = 0) {
-        for (nat_t iter = 0; max_iter == 0 || iter < max_iter; iter++) {
-            bool success = true;
-            for (Constraint& constraint: constraints)
-                success = constraint.correct(network, eta) && success; // 'success' must be second member in order to ensure call to '.correct'
-            if (success)
-                return true;
+    template<nat_t... implicit_dims> nat_t correct(Network<implicit_dims...>& network, val_t eta) {
+        nat_t count = 0;
+        for (Constraint& constraint: constraints) {
+            if (!constraint.correct(network, eta)) // Not in-bounds
+                count++;
         }
-        return false;
+        return count;
+    }
+    /** Randomize constraints order.
+    **/
+    void shuffle() {
+        ::std::shuffle(constraints.begin(), constraints.end(), engine);
     }
 public:
     /** Print learning discipline to the given stream.
      * @param ostr Output stream
     **/
-    void print(std::ostream& ostr) {
+    void print(::std::ostream& ostr) {
         if (constraints.empty()) {
             ostr << "{}";
             return;
         }
-        ostr << "{" << std::endl << "\t";
+        ostr << "{" << ::std::endl << "\t";
         bool first = true;
         for (Constraint& constraint: constraints) {
             if (first) {
                 first = false;
                 constraint.print(ostr);
             } else {
-                ostr << "," << std::endl << "\t";
+                ostr << "," << ::std::endl << "\t";
                 constraint.print(ostr);
             }
         }
-        ostr << std::endl << "}";
+        ostr << ::std::endl << "}";
     }
 };
 

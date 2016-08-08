@@ -26,6 +26,7 @@
 // External headers
 #include <cstdio>
 #include <stdexcept>
+#include <unordered_map>
 extern "C" {
 #include <fcntl.h>
 #include <unistd.h>
@@ -51,9 +52,10 @@ constexpr nat_t rows_length = 28; // Image row length
 constexpr nat_t cols_length = 28; // Image col length
 constexpr nat_t input_dim   = rows_length * cols_length; // Input space dimension
 constexpr nat_t output_dim  = 10; // Output space dimension
-val_t (*transfert_function)(val_t) = tanhf; // Transfert function used
-val_t transfert_range = 2; // Difference between max and min
-val_t default_margin = 0.1; // Default margin for the learning discipline
+val_t (*const transfert_function)(val_t) = [](val_t x) { return 1 / (1 + expf(-x)); }; // Transfert function used
+val_t const margin_valid = 0.25; // Margin for "valid dimension"
+val_t const margin_invalid = 0.75; // Margin for "invalid dimensions"
+val_t const eta = 0.01; // Learning rate
 
 /** Input vector.
 **/
@@ -68,20 +70,22 @@ using Output = Vector<output_dim>;
 // ▁ Simple transformations ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
-/** Return the digit associated with a dimension id.
+namespace Helper {
+
+/** Return the label associated with a dimension id.
  * @param dim Given dimension id
- * @return Associated digit
+ * @return Associated label
 **/
-constexpr nat_t output_dim_to_digit(nat_t dim) {
+constexpr nat_t dim_to_label(nat_t dim) {
     return dim;
 }
 
-/** Return the dimension id associated with a digit.
- * @param digit Given digit
+/** Return the dimension id associated with a label.
+ * @param label Given label
  * @return Associated dimension id
 **/
-constexpr nat_t output_digit_to_dim(nat_t digit) {
-    return digit;
+constexpr nat_t label_to_dim(nat_t label) {
+    return label;
 }
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
@@ -92,11 +96,12 @@ constexpr nat_t output_digit_to_dim(nat_t digit) {
  * @param margin Margin vector (optional)
 **/
 void label_to_vector(nat_t label, Output& output, Output* margin = null) {
+    nat_t dim_label = label_to_dim(label);
     for (nat_t i = 0; i < output_dim; i++)
-        output.set(i, i == label ? 1 : -1);
+        output.set(i, i == dim_label ? 1 : 0);
     if (margin)
         for (nat_t i = 0; i < output_dim; i++)
-            margin->set(i, i == label ? default_margin : transfert_range);
+            margin->set(i, i == dim_label ? margin_valid : margin_invalid);
 }
 
 /** Translate an output vector to a label.
@@ -113,7 +118,9 @@ nat_t vector_to_label(Output& output) {
             larger_val = val;
         }
     }
-    return output_dim_to_digit(larger_dim);
+    return dim_to_label(larger_dim);
+}
+
 }
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
@@ -226,7 +233,7 @@ private:
         return ret;
     }
 public:
-    /** Open an images file, basic validity checks.
+    /** Open images/labels files, basic validity checks.
      * @param path_img Images file to open
      * @param path_lab Labels file to open
     **/
@@ -250,7 +257,7 @@ public:
             throw ::std::runtime_error(err_str);
         }
         count = static_cast<nat_t>(endian_inverse(header_img[1]));
-        if (count < 1) {
+        if (unlikely(count < 1)) {
             ::std::string err_str;
             err_str.append("'");
             err_str.append(path_img);
@@ -296,11 +303,11 @@ private:
         template<nat_t... implicit_dims> bool check(Network<implicit_dims...>& network) {
             Output result;
             network.compute(image, result);
-            return vector_to_label(result) == label;
+            return Helper::vector_to_label(result) == label;
         }
     };
 private:
-    ::std::list<Image> tests; // List of test images with labels
+    ::std::vector<Image> tests; // List of test images with labels
 public:
     /** Load images and labels from loader object.
      * @param loader Loader object to load from
@@ -323,52 +330,151 @@ Learning<input_dim, output_dim> discipline;
 // Tests set
 Tests tests;
 
+// Transfert function
+Transfert transfert;
+
+// Network to use
+Network<rows_length * cols_length, rows_length * cols_length / 8, output_dim> network(transfert);
+
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Database ▔
+// ▁ Orders ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+
+/** Learning order handler.
+ * @param argc Number of arguments
+ * @param argv Arguments (at least 2)
+ * @return Return code
+**/
+int train(int argc, char** argv) {
+    if (argc != 4) { // Wrong number of parameters
+        ::std::cerr << "Usage: " << argv[0] << " " << argv[1] << " <training images> <training labels> | 'raw trained network'" << ::std::endl;
+        return 0;
+    }
+    { // Loading phase
+        ::std::cerr << "Loading training files...";
+        ::std::cerr.flush();
+        try {
+            Loader train(argv[2], argv[3]);
+            Input input;
+            nat_t label;
+            while (train.feed(input, label)) {
+                Output output;
+                Output margin;
+                Helper::label_to_vector(label, output, &margin);
+                discipline.add(input, output, margin);
+            }
+        } catch (::std::runtime_error& err) {
+            ::std::cerr << " fail: " << err.what() << ::std::endl;
+            return 1;
+        }
+        ::std::cerr << " done." << ::std::endl;
+    }
+    { // Randomize network
+        UniformRandomizer<std::ratio<1, 100>> randomizer;
+        network.randomize(randomizer);
+    }
+    { // Learning phase
+        ::std::cerr << "Learning phase... step 0: ...";
+        ::std::cerr.flush();
+        nat_t step = 0;
+        while (true) {
+            nat_t count = discipline.correct(network, eta);
+            ::std::cerr << "\rLearning phase... step " << ++step << ": " << count << "          ";
+            if (count == 0)
+                break;
+            ::std::cerr.flush();
+            discipline.shuffle();
+        }
+        ::std::cerr << "\rLearning phase... done." << ::std::endl;
+    }
+    { // Output phase
+        Serializer::StreamOutput so(::std::cout);
+        network.store(so);
+    }
+    return 0;
+}
+
+/** Test order handler.
+ * @param argc Number of arguments
+ * @param argv Arguments (at least 2)
+ * @return Return code
+**/
+int test(int argc, char** argv) {
+    if (argc != 4) { // Wrong number of parameters
+        ::std::cerr << "Usage: 'raw trained network' | " << argv[0] << " " << argv[1]  << " <test images> <test labels>" << ::std::endl;
+        return 0;
+    }
+    { // Loading phase
+        ::std::cerr << "Loading testing files...";
+        ::std::cerr.flush();
+        try {
+            Loader train(argv[2], argv[3]);
+            Input input;
+            nat_t label;
+            while (train.feed(input, label)) {
+                Output output;
+                Output margin;
+                Helper::label_to_vector(label, output, &margin);
+                discipline.add(input, output, margin);
+            }
+        } catch (::std::runtime_error& err) {
+            ::std::cerr << " fail: " << err.what() << ::std::endl;
+            return 1;
+        }
+        ::std::cerr << " done." << ::std::endl;
+    }
+    { // Input phase
+        /// TODO: Network input phase
+    }
+    { // Testing phase
+        ::std::cerr << "Testing phase..." << ::std::endl;
+        /// TODO: Testing phase
+    }
+    return 2;
+}
+
+// ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
+
+/** Handler type.
+**/
+using Handler = int (*)(int, char**);
+
+// Map order to handler
+::std::unordered_map<::std::string, Handler> orders = { { "train", train }, { "test", test } };
+
+// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+// ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Orders ▔
 // ▁ Entry point ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
 /** Program entry point.
- * @param argc Ignored
- * @param argv Ignored
- * @return Always zero
+ * @param argc Number of arguments
+ * @param argv Arguments
+ * @return Return code
 **/
 int main(int argc, char** argv) {
-    { // Parameters handling
-        if (argc != 5) { // Wrong number of parameters
-            ::std::printf("Usage: %s <training images> <training labels> <test images> <test labels>\n", argc != 0 ? argv[0] : "mnist");
-            return 0;
-        }
-        ::std::printf("Loading files...");
-        fflush(stdout);
-        try {
-            Loader train(argv[1], argv[2]);
-            Loader test(argv[3], argv[4]);
-            { // Initialize learning discipline
-                Input input;
-                nat_t label;
-                while (train.feed(input, label)) {
-                    Output output;
-                    Output margin;
-                    label_to_vector(label, output, &margin);
-                    discipline.add(input, output, margin);
-                }
+    if (argc < 2 || orders.count(argv[1]) == 0) { // Wrong number of parameters or unknow order
+        ::std::cerr << "Usage: " << (argc != 0 ? argv[0] : "mnist") << " {";
+        bool first = true;
+        for(auto const& i: orders) {
+            if (first) {
+                first = false;
+            } else {
+                ::std::cerr << " | ";
             }
-            tests.load(test);
-        } catch (::std::runtime_error& err) {
-            ::std::printf(" fail: %s\n", err.what());
+            ::std::cerr << i.first;
         }
-        ::std::printf(" done.\n");
+        ::std::cerr << "}" << ::std::endl;
+        return 0;
     }
-    { // Learning phase
-        ::std::printf("Learning phase...\n");
-        /// TODO: Learning phase
+    { // Transfert function initialization
+        if (!transfert.set(transfert_function, -5, 5, 1001)) {
+            ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
+            return 1;
+        }
     }
-    { // Testing phase
-        ::std::printf("Testing phase...\n");
-        /// TODO: Testing phase
-    }
-    return 0;
+    return orders[argv[1]](argc, argv); // Order handling
 }
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁

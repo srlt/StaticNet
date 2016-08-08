@@ -81,7 +81,16 @@ int main(int argc, char** argv) {
 
         std::cout << "Learning...";
         std::cout.flush();
-        std::cout << (discipline.correct(network, 0.1, 100000) ? " done." : " fail.") << std::endl;
+        for (nat_t i = 0;; i++) {
+            if (i >= 100000) {
+                std::cout << " fail." << std::endl;
+                break;
+            }
+            if (discipline.correct(network, 0.1) == 0) {
+                std::cout << " done." << std::endl;
+                break;
+            }
+        }
     }
     std::cout << std::endl;
 

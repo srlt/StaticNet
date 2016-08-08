@@ -10,9 +10,9 @@ OBJECTS = $(SOURCES:%=%.o)
 AS       := $(AS)
 ASFLAGS  :=
 CC       := cc
-CCFLAGS  := -Wall -O2 -std=c11 -I$(HDR)
+CCFLAGS  := -Wall -Ofast -std=c11 -I$(HDR)
 CXX      := c++
-CXXFLAGS := -Wall -O2 -std=c++14 -I$(HDR)
+CXXFLAGS := -Wall -Ofast -std=c++14 -I$(HDR)
 LD       := c++
 LDFLAGS  :=
 
