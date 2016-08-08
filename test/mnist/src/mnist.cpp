@@ -375,7 +375,7 @@ int train(int argc, char** argv) {
         network.randomize(randomizer);
     }
     { // Learning phase
-        ::std::cerr << "Learning phase... step 0: ...";
+        ::std::cerr << "Learning phase... epoch 0: ...";
         ::std::cerr.flush();
         nat_t step = 0;
         while (true) {
@@ -409,15 +409,8 @@ int test(int argc, char** argv) {
         ::std::cerr << "Loading testing files...";
         ::std::cerr.flush();
         try {
-            Loader train(argv[2], argv[3]);
-            Input input;
-            nat_t label;
-            while (train.feed(input, label)) {
-                Output output;
-                Output margin;
-                Helper::label_to_vector(label, output, &margin);
-                discipline.add(input, output, margin);
-            }
+            Loader test(argv[2], argv[3]);
+            tests.load(test);
         } catch (::std::runtime_error& err) {
             ::std::cerr << " fail: " << err.what() << ::std::endl;
             return 1;
@@ -425,7 +418,8 @@ int test(int argc, char** argv) {
         ::std::cerr << " done." << ::std::endl;
     }
     { // Input phase
-        /// TODO: Network input phase
+        Serializer::StreamInput si(::std::cin);
+        network.load(si);
     }
     { // Testing phase
         ::std::cerr << "Testing phase..." << ::std::endl;
