@@ -393,7 +393,7 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() {
+    constexpr size_t size() const {
         return dim * sizeof(val_t);
     }
     /** Load vector data.
@@ -406,7 +406,7 @@ public:
     /** Store vector data.
      * @param output Serialized output
     **/
-    void store(Serializer::Output& output) {
+    void store(Serializer::Output& output) const {
         for (nat_t i = 0; i < dim; i++)
             output.store(get(i));
     }
@@ -414,7 +414,7 @@ public:
     /** Print vector to the given stream.
      * @param ostr Output stream
     **/
-    void print(::std::ostream& ostr) {
+    void print(::std::ostream& ostr) const {
         ostr << "{ " << get(0);
         for (nat_t i = 1; i < dim; i++)
             ostr << ", " << get(i);
@@ -454,7 +454,7 @@ public:
      * @param out_sum Sum of weighted inputs (optional)
      * @return Output scalar
     **/
-    val_t compute(Vector<input_dim> const& input, Transfert const& trans, val_t* out_sum = null) {
+    val_t compute(Vector<input_dim> const& input, Transfert const& trans, val_t* out_sum = null) const {
         val_t sum = weight * input + bias;
         if (out_sum)
             *out_sum = sum;
@@ -479,7 +479,7 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() {
+    constexpr size_t size() const {
         return weight.size() + sizeof(val_t);
     }
     /** Load neuron data.
@@ -492,7 +492,7 @@ public:
     /** Store vector data.
      * @param output Serialized output
     **/
-    void store(Serializer::Output& output) {
+    void store(Serializer::Output& output) const {
         weight.store(output);
         output.store(bias);
     }
@@ -500,7 +500,7 @@ public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(::std::ostream& ostr) {
+    void print(::std::ostream& ostr) const {
         ostr << "{ ";
         weight.print(ostr);
         ostr << ", " << bias << " }";
@@ -537,7 +537,7 @@ public:
      * @param output  Output vector
      * @param out_sum Sum of weighted inputs vector (output, optional)
     **/
-    void compute(Vector<input_dim> const& input, Vector<output_dim>& output, Vector<output_dim>* out_sum = null) {
+    void compute(Vector<input_dim> const& input, Vector<output_dim>& output, Vector<output_dim>* out_sum = null) const {
         if (out_sum) {
             for (nat_t i = 0; i < output_dim; i++) {
                 val_t sum;
@@ -576,7 +576,7 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() {
+    constexpr size_t size() const {
         size_t size = 0;
         for (nat_t i = 0; i < output_dim; i++)
             size += neurons[i].size();
@@ -592,7 +592,7 @@ public:
     /** Store vector data.
      * @param output Serialized output
     **/
-    void store(Serializer::Output& output) {
+    void store(Serializer::Output& output) const {
         for (nat_t i = 0; i < output_dim; i++)
             neurons[i].store(output);
     }
@@ -600,7 +600,7 @@ public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(::std::ostream& ostr) {
+    void print(::std::ostream& ostr) const {
         ostr << "{" << ::std::endl << "\t";
         neurons[0].print(ostr);
         for (nat_t i = 1; i < output_dim; i++) {
@@ -639,7 +639,7 @@ public:
      * @param input  Input vector
      * @param output Output vector
     **/
-    template<nat_t implicit_dim> void compute(Vector<input_dim> const& input, Vector<implicit_dim>& output) {
+    template<nat_t implicit_dim> void compute(Vector<input_dim> const& input, Vector<implicit_dim>& output) const {
         Vector<inter_dim> local_output; // Local layer output vector
         layer.compute(input, local_output);
         layers.compute(local_output, output);
@@ -663,7 +663,7 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() {
+    constexpr size_t size() const {
         return layer.size() + layers.size();
     }
     /** Load layer data.
@@ -676,7 +676,7 @@ public:
     /** Store vector data.
      * @param output Serialized output
     **/
-    void store(Serializer::Output& output) {
+    void store(Serializer::Output& output) const {
         layer.store(output);
         layers.store(output);
     }
@@ -684,7 +684,7 @@ public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(::std::ostream& ostr) {
+    void print(::std::ostream& ostr) const {
         layer.print(ostr);
         ostr << ", ";
         layers.print(ostr);
@@ -711,7 +711,7 @@ public:
      * @param input  Input vector
      * @param output Output vector
     **/
-    void compute(Vector<input_dim> const& input, Vector<output_dim>& output) {
+    void compute(Vector<input_dim> const& input, Vector<output_dim>& output) const {
         layer.compute(input, output);
     }
     /** Compute then reduce the quadratic error of the network.
@@ -733,7 +733,7 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() {
+    constexpr size_t size() const {
         return layer.size();
     }
     /** Load layer data.
@@ -745,14 +745,14 @@ public:
     /** Store vector data.
      * @param output Serialized output
     **/
-    void store(Serializer::Output& output) {
+    void store(Serializer::Output& output) const {
         layer.store(output);
     }
 public:
     /** Print neuron weights to the given stream.
      * @param ostr Output stream
     **/
-    void print(::std::ostream& ostr) {
+    void print(::std::ostream& ostr) const {
         layer.print(ostr);
     }
 };

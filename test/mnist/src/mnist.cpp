@@ -109,16 +109,16 @@ void label_to_vector(nat_t label, Output& output, Output* margin = null) {
  * @return Associated label
 **/
 nat_t vector_to_label(Output& output) {
-    nat_t larger_dim = 0;
-    nat_t larger_val = output.get(0);
+    nat_t largest_dim = 0;
+    val_t largest_val = output.get(0);
     for (nat_t i = 1; i < output_dim; i++) {
         val_t val = output.get(i);
-        if (val > larger_val) {
-            larger_dim = i;
-            larger_val = val;
+        if (val > largest_val) {
+            largest_dim = i;
+            largest_val = val;
         }
     }
-    return dim_to_label(larger_dim);
+    return dim_to_label(largest_dim);
 }
 
 }
@@ -252,7 +252,7 @@ public:
             err_str.append("'");
             err_str.append(path_img);
             err_str.append("' and '");
-            err_str.append(path_img);
+            err_str.append(path_lab);
             err_str.append("' count mismatch");
             throw ::std::runtime_error(err_str);
         }
@@ -262,7 +262,7 @@ public:
             err_str.append("'");
             err_str.append(path_img);
             err_str.append("' and '");
-            err_str.append(path_img);
+            err_str.append(path_lab);
             err_str.append("' no image");
             throw ::std::runtime_error(err_str);
         }
@@ -300,7 +300,7 @@ private:
          * @param network Network to test
          * @return True on a correct answer, false otherwise
         **/
-        template<nat_t... implicit_dims> bool check(Network<implicit_dims...>& network) {
+        template<nat_t... implicit_dims> bool check(Network<implicit_dims...>& network) const {
             Output result;
             network.compute(image, result);
             return Helper::vector_to_label(result) == label;
@@ -319,6 +319,18 @@ public:
             if (!loader.feed(current.image, current.label))
                 break;
         }
+    }
+    /** Test network on the testing set.
+     * @param network Network to test
+     * @return Number of success, number of test elements
+    **/
+    template<nat_t... implicit_dims> ::std::tuple<nat_t, nat_t> test(Network<implicit_dims...>& network) const {
+        nat_t count = 0; // Success counter
+        for (Image const& test: tests) {
+            if (test.check(network))
+                count++;
+        }
+        return ::std::make_tuple(count, static_cast<nat_t>(tests.size()));
     }
 };
 
@@ -358,11 +370,14 @@ int train(int argc, char** argv) {
             Loader train(argv[2], argv[3]);
             Input input;
             nat_t label;
-            while (train.feed(input, label)) {
+            while (true) {
+                bool cont = train.feed(input, label); // There is at least one element to feed
                 Output output;
                 Output margin;
                 Helper::label_to_vector(label, output, &margin);
                 discipline.add(input, output, margin);
+                if (!cont)
+                    break;
             }
         } catch (::std::runtime_error& err) {
             ::std::cerr << " fail: " << err.what() << ::std::endl;
@@ -380,13 +395,13 @@ int train(int argc, char** argv) {
         nat_t step = 0;
         while (true) {
             nat_t count = discipline.correct(network, eta);
-            ::std::cerr << "\rLearning phase... step " << ++step << ": " << count << "          ";
+            ::std::cerr << "\rLearning phase... epoch " << ++step << ": " << count << "          ";
             if (count == 0)
                 break;
             ::std::cerr.flush();
             discipline.shuffle();
         }
-        ::std::cerr << "\rLearning phase... done." << ::std::endl;
+        ::std::cerr << "\rLearning phase... epoch " << step << " done.          " << ::std::endl;
     }
     { // Output phase
         Serializer::StreamOutput so(::std::cout);
@@ -422,10 +437,14 @@ int test(int argc, char** argv) {
         network.load(si);
     }
     { // Testing phase
-        ::std::cerr << "Testing phase..." << ::std::endl;
-        /// TODO: Testing phase
+        ::std::cerr << "Testing phase...";
+        ::std::cerr.flush();
+        nat_t success;
+        nat_t total;
+        ::std::tie(success, total) = tests.test(network);
+        ::std::cerr << " " << success << "/" << total << ::std::endl;
     }
-    return 2;
+    return 0;
 }
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
