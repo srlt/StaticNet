@@ -1,0 +1,9 @@
+****************************
+* A few generated networks *
+****************************
+
+Name format: 784-$d-10_epoch-$e_$i.net
+¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯
+- $d: Network intermediate dimensions (as in the template arguments), separated by "-"
+- $e: Epoch when the learning discipline returns no error
+- $i: Random number, to mitigate the case where two different networks happen to have the same $d and $e
