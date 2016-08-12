@@ -1,6 +1,0 @@
-Files:
-¯¯¯¯¯¯
-train-images    training images, uncompressed, "mnist" format
-train-labels    training labels, uncompressed, "mnist" format
-test-images     testing images, uncompressed, "mnist" format
-test-labels     testing labels, uncompressed, "mnist" format
