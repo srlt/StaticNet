@@ -1,0 +1,29 @@
+# Ignore everything in this directory and subdirectories
+*
+
+# Except directories and specific files
+!*/
+
+!LICENSE
+!.gitignore
+
+!*.md
+!*.placeholder
+
+!*.sh
+!*.gp
+
+!*.s
+!*.S
+
+!*.c
+!*.h
+
+!*.C
+!*.cc
+!*.cpp
+!*.hpp
+
+!*Makefile
+
+!*.net
