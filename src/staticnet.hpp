@@ -28,6 +28,7 @@
 // External headers
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <initializer_list>
 #include <iostream>
 #include <random>
@@ -97,7 +98,7 @@ private:
      * @return Floating-point representation of the ratio
     **/
     constexpr val_t ratio() {
-        constexpr val_t ret = (val_t) Ratio::num / (val_t) Ratio::den;
+        constexpr val_t ret = static_cast<val_t>(Ratio::num) / static_cast<val_t>(Ratio::den);
         static_assert(ret > 0, "'Ratio' must be a positive value");
         return ret;
     }
@@ -170,7 +171,7 @@ public:
     **/
     ~Transfert() {
         if (tbase)
-            ::free(static_cast<void*>(tbase));
+            ::std::free(static_cast<void*>(tbase));
     }
 public:
     /** Get a value through this function/its derivative, perform linear interpolation.
@@ -195,8 +196,8 @@ public:
             return false;
         { // Points table allocation
             if (tbase) // Points table freeing (if already exists)
-                ::free(static_cast<void*>(tbase));
-            void* addr = ::malloc(2 * prec * sizeof(val_t)); // Both tables
+                ::std::free(static_cast<void*>(tbase));
+            void* addr = ::std::malloc(2 * prec * sizeof(val_t)); // Both tables
             if (!addr) { // Allocation failure
                 tbase = null;
                 return false;
