@@ -24,6 +24,7 @@
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 
 // External headers
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 #include <unordered_map>
@@ -52,9 +53,11 @@ constexpr nat_t rows_length = 28; // Image row length
 constexpr nat_t cols_length = 28; // Image col length
 constexpr nat_t input_dim   = rows_length * cols_length; // Input space dimension
 constexpr nat_t output_dim  = 10; // Output space dimension
-val_t (*const transfert_function)(val_t) = [](val_t x) { return 1 / (1 + expf(-x)); }; // Transfert function used
-val_t const margin_valid = 0.25; // Margin for "valid dimension"
-val_t const margin_invalid = 0.75; // Margin for "invalid dimensions"
+val_t (*const transfert_function)(val_t) = [](val_t x) { return val_t(1) / (val_t(1) + ::std::exp(-x)); }; // Transfert function used
+val_t const value_valid    = 0.75; // Value for "valid dimension"
+val_t const value_invalid  = 0.25; // Value for "invalid dimension"
+val_t const margin_valid   = 0.25; // Margin for "valid dimension"
+val_t const margin_invalid = 0.25; // Margin for "invalid dimensions"
 val_t const eta = 0.01; // Learning rate
 
 /** Input vector.
@@ -64,6 +67,10 @@ using Input = Vector<input_dim>;
 /** Output vector.
 **/
 using Output = Vector<output_dim>;
+
+/** Network used.
+**/
+using Net = Network<rows_length * cols_length, rows_length * cols_length / 8, output_dim>;
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Constants ▔
@@ -98,7 +105,7 @@ constexpr nat_t label_to_dim(nat_t label) {
 void label_to_vector(nat_t label, Output& output, Output* margin = null) {
     nat_t dim_label = label_to_dim(label);
     for (nat_t i = 0; i < output_dim; i++)
-        output.set(i, i == dim_label ? 1 : 0);
+        output.set(i, i == dim_label ? value_valid : value_invalid);
     if (margin)
         for (nat_t i = 0; i < output_dim; i++)
             margin->set(i, i == dim_label ? margin_valid : margin_invalid);
@@ -346,7 +353,7 @@ Tests tests;
 Transfert transfert;
 
 // Network to use
-Network<rows_length * cols_length, rows_length * cols_length / 8, output_dim> network(transfert);
+Net network(transfert);
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Database ▔
@@ -359,9 +366,23 @@ Network<rows_length * cols_length, rows_length * cols_length / 8, output_dim> ne
  * @return Return code
 **/
 int train(int argc, char** argv) {
-    if (argc != 4) { // Wrong number of parameters
-        ::std::cerr << "Usage: " << argv[0] << " " << argv[1] << " <training images> <training labels> | 'raw trained network'" << ::std::endl;
-        return 0;
+    switch (argc) {
+        case 4: { // Without correction
+            if (!transfert.set(transfert_function, -5, 5, 1001)) {
+                ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
+                return 1;
+            }
+        } break;
+        case 6: { // With correction
+            Transfert::Correction correct(::std::atof(argv[4]), ::std::atof(argv[5]));
+            if (!transfert.set(transfert_function, -5, 5, 1001, &correct)) {
+                ::std::cerr << "Precache of the transfert function (corrected) failed" << ::std::endl;
+                return 1;
+            }
+        } break;
+        default: // Wrong number of parameters
+            ::std::cerr << "Usage: " << argv[0] << " " << argv[1] << " <training images> <training labels> [limit squareness] | 'raw trained network'" << ::std::endl;
+            return 0;
     }
     { // Loading phase
         ::std::cerr << "Loading training files...";
@@ -420,6 +441,12 @@ int test(int argc, char** argv) {
         ::std::cerr << "Usage: 'raw trained network' | " << argv[0] << " " << argv[1]  << " <test images> <test labels>" << ::std::endl;
         return 0;
     }
+    { // Initialize transfert function
+        if (!transfert.set(transfert_function, -5, 5, 1001)) {
+            ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
+            return 1;
+        }
+    }
     { // Loading phase
         ::std::cerr << "Loading testing files...";
         ::std::cerr.flush();
@@ -447,6 +474,36 @@ int test(int argc, char** argv) {
     return 0;
 }
 
+/** Print transfert functions, to plot them.
+ * @param argc Number of arguments
+ * @param argv Arguments (at least 2)
+ * @return Return code
+**/
+int plot(int argc, char** argv) {
+    switch (argc) {
+        case 2: {
+            if (!transfert.set(transfert_function, -5, 5, 1001)) {
+                ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
+                return 1;
+            }
+            transfert.print(::std::cout);
+            return 0;
+        }
+        case 4: {
+            Transfert::Correction correct(::std::atof(argv[2]), ::std::atof(argv[3]));
+            if (!transfert.set(transfert_function, -5, 5, 1001, &correct)) {
+                ::std::cerr << "Precache of the transfert function (corrected) failed" << ::std::endl;
+                return 1;
+            }
+            transfert.print(::std::cout);
+            return 0;
+        }
+        default: // Wrong number of parameters
+            ::std::cerr << "Usage: " << argv[0] << " " << argv[1]  << " [limit squareness] | 'plot points'" << ::std::endl;
+            return 0;
+    }
+}
+
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――
 
 /** Handler type.
@@ -454,7 +511,7 @@ int test(int argc, char** argv) {
 using Handler = int (*)(int, char**);
 
 // Map order to handler
-::std::unordered_map<::std::string, Handler> orders = { { "train", train }, { "test", test } };
+::std::unordered_map<::std::string, Handler> orders = { { "train", train }, { "test", test }, { "plot", plot } };
 
 // ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 // ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ Orders ▔
@@ -467,7 +524,7 @@ using Handler = int (*)(int, char**);
  * @return Return code
 **/
 int main(int argc, char** argv) {
-    if (argc < 2 || orders.count(argv[1]) == 0) { // Wrong number of parameters or unknow order
+    if (argc < 2 || orders.count(argv[1]) == 0) { // Wrong number of parameters or unknown order
         ::std::cerr << "Usage: " << (argc != 0 ? argv[0] : "mnist") << " {";
         bool first = true;
         for(auto const& i: orders) {
@@ -480,12 +537,6 @@ int main(int argc, char** argv) {
         }
         ::std::cerr << "}" << ::std::endl;
         return 0;
-    }
-    { // Transfert function initialization
-        if (!transfert.set(transfert_function, -5, 5, 1001)) {
-            ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
-            return 1;
-        }
     }
     return orders[argv[1]](argc, argv); // Order handling
 }

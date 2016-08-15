@@ -16,11 +16,17 @@ CXXFLAGS := -Wall -Ofast -std=c++14 -I$(HDR)
 LD       := c++
 LDFLAGS  :=
 
-.PHONY: build run clean
+PLOT_DIR = plot
+PLOT_GP  = $(PLOT_DIR)/plot.gp
+PLOT_DAT = $(PLOT_DIR)/transfert.dat
+
+.PHONY: build run plot clean
 
 build: $(BIN)
 run: $(BIN)
 	@$(BIN) $(ARGS)
+plot: $(PLOT_GP) $(PLOT_DAT)
+	@gnuplot -e "filename='$(PLOT_DAT)'" $(PLOT_GP)
 clean:
 	$(RM) $(OBJECTS) $(BIN)
 
@@ -33,3 +39,6 @@ clean:
 
 $(BIN): $(OBJECTS)
 	$(LD) $(LDFLAGS) -o $@ $^
+
+$(PLOT_DAT): $(BIN) $(PLOT_GP)
+	@$(BIN) plot $(ARGS) > $(PLOT_DAT)

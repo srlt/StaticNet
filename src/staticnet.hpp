@@ -27,6 +27,7 @@
 
 // External headers
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
@@ -133,6 +134,30 @@ namespace StaticNet {
 class Transfert final {
 private:
     constexpr static val_t diff_delta = 0.0001; // Delta for derivative estimation
+public:
+    /** Weight correction class, to try and increase robustness.
+    **/
+    class Correction final {
+    private:
+        val_t limit;  // Limit value (for which |x| the correction crosses ±1), must be > 0
+        val_t square; // "Squareness" of the function, must be > 0
+    public:
+        /** Initialize the correction parameters.
+         * @param limit  Limit value
+         * @param square "Squareness"
+        **/
+        Correction(val_t limit, val_t square): limit(limit), square(square) {}
+    public:
+        /** Compute the correction.
+         * @param x Weight value
+         * @return Correction weight value
+        **/
+        val_t operator()(val_t x) const {
+            val_t prod = limit * square;
+            val_t exp_prod = ::std::exp(2 * prod);
+            return exp_prod / (square * (exp_prod - 1)) * ::std::log((::std::exp(prod + square * x) + 1) / (::std::exp(prod) + ::std::exp(square * x)));
+        }
+    };
 private:
     nat_t  count; // Nb points
     val_t  x_min; // Min input
@@ -140,26 +165,43 @@ private:
     val_t  delta; // dx between points
     val_t* tbase; // Points of base function (null if not initialized)
     val_t* tdiff; // Points of derived function (= base + prec)
+    val_t* tcorr; // Weight correction function (null for none)
 private:
-    /** Get a value through this function/its derivative, perform linear interpolation.
+    /** Function type selector.
+    **/
+    enum class select { base, diff, corr }; // Function type selector
+    /** Select a table.
+     * @param func Table to select
+     * @return Selected table
+    **/
+    template<select func> val_t* get() const {
+        switch (func) {
+            case select::base:
+                return tbase;
+            case select::diff:
+                return tdiff;
+            case select::corr:
+                return tcorr;
+        }
+    }
+    /** Interpolate (linearly) a value through this function/its derivative/other.
      * @param func Selected function ('base' or 'diff')
      * @param x    Input value
      * @return Output value
     **/
-    enum class select { base, diff }; // Function type selector
-    template<select func> val_t get(val_t x) const {
+    template<select func> val_t interpolate(val_t x) const {
         if (unlikely(x < x_min)) {
-            return (func == select::diff ? tdiff : tbase)[0];
+            return get<func>()[0];
         } else if (unlikely(x >= x_max)) {
-            return (func == select::diff ? tdiff : tbase)[count - 1];
+            return get<func>()[count - 1];
         } // Else linear interpolation
         nat_t i = static_cast<nat_t>((x - x_min) / delta);
         if (unlikely(i + 1 >= count)) { // Due to floating-point imprecision
-            return (func == select::diff ? tdiff : tbase)[count - 1];
+            return get<func>()[count - 1];
         } else {
             val_t f = (x - (x_min + static_cast<val_t>(i) * delta)) / delta;
-            val_t y_a = (func == select::diff ? tdiff : tbase)[i];
-            val_t y_b = (func == select::diff ? tdiff : tbase)[i + 1];
+            val_t y_a = get<func>()[i];
+            val_t y_b = get<func>()[i + 1];
             return y_a + (y_b - y_a) * f;
         }
     }
@@ -174,46 +216,64 @@ public:
             ::std::free(static_cast<void*>(tbase));
     }
 public:
-    /** Get a value through this function/its derivative, perform linear interpolation.
+    /** Pass parameter through the transfert function.
      * @param x Input value
      * @return Output value
     **/
     val_t operator()(val_t x) const {
-        return get<select::base>(x);
+        return interpolate<select::base>(x);
     }
+    /** Pass parameter through the transfert function derivative.
+     * @param x Input value
+     * @return Output value
+    **/
     val_t diff(val_t x) const {
-        return get<select::diff>(x);
+        return interpolate<select::diff>(x);
     }
-    /** (Re)set the transfert function.
+    /** Apply a weight correction, if defined.
+     * @param weight Input weight
+     * @return Corrected weight
+    **/
+    val_t corr(val_t weight) const {
+        if (!tcorr) // Nothing to do
+            return weight;
+        return interpolate<select::corr>(weight);
+    }
+    /** (Re)set the transfert function, with optional weight correction.
      * @param trans Transfert function
      * @param min   Min input
      * @param max   Max input
      * @param prec  Amount of points
+     * @param corr  Weight correction (optional)
      * @return True if the operation is a success, false otherwise
     **/
-    bool set(val_t trans(val_t), val_t min, val_t max, nat_t prec) {
+    bool set(val_t trans(val_t), val_t min, val_t max, nat_t prec, Correction const* corr = null) {
         if (unlikely(min >= max || prec < 2)) // Basic checks
             return false;
         { // Points table allocation
             if (tbase) // Points table freeing (if already exists)
                 ::std::free(static_cast<void*>(tbase));
-            void* addr = ::std::malloc(2 * prec * sizeof(val_t)); // Both tables
+            void* addr = ::std::malloc((corr ? 3 : 2) * prec * sizeof(val_t));
             if (!addr) { // Allocation failure
                 tbase = null;
                 return false;
             }
             tbase = static_cast<val_t*>(addr);
             tdiff = tbase + prec;
+            tcorr = (corr ? tdiff + prec : null);
         }
         { // Tables initialization
-            nat_t i;
             delta = (max - min) / static_cast<val_t>(prec - 1);
-            i = 0;
-            for (val_t x = min; i < prec; x += delta) // Base
-                tbase[i++] = trans(x);
-            i = 0;
-            for (val_t x = min; i < prec; x += delta) // Diff
-                tdiff[i++] = (trans(x + diff_delta / 2) - trans(x - diff_delta / 2)) / diff_delta;
+            nat_t i = 0;
+            for (val_t x = min; i < prec; x += delta, i++) { // Base and diff
+                tbase[i] = trans(x);
+                tdiff[i] = (trans(x + diff_delta / 2) - trans(x - diff_delta / 2)) / diff_delta;
+            }
+            if (corr) {
+                i = 0;
+                for (val_t x = min; i < prec; x += delta, i++) // Corr
+                    tcorr[i] = (*corr)(x);
+            }
         }
         { // Basic finalization
             count = prec;
@@ -221,6 +281,14 @@ public:
             x_max = max;
         }
         return true;
+    }
+public:
+    /** Print functions (transfert, transfert derivative, weight correction) to the given stream, to plot them.
+     * @param ostr Output stream
+    **/
+    void print(::std::ostream& ostr) const {
+        for (val_t x = x_min - 1; x <= x_max + 1; x += delta)
+            ostr << x << "\t" << interpolate<select::base>(x) << "\t" << interpolate<select::diff>(x) << "\t" << corr(x) << ::std::endl;
     }
 };
 
@@ -472,7 +540,7 @@ public:
     val_t correct(Vector<input_dim> const& input, val_t sum, val_t error, val_t eta, Transfert const& trans) {
         val_t err = error * trans.diff(sum);
         for (nat_t i = 0; i < input_dim; i++)
-            weight.set(i, weight.get(i) + eta * err * input.get(i));
+            weight.set(i, trans.corr(weight.get(i) + eta * err * input.get(i)));
         bias += eta * err;
         return err;
     }
