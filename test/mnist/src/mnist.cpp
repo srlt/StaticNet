@@ -54,10 +54,10 @@ constexpr nat_t cols_length = 28; // Image col length
 constexpr nat_t input_dim   = rows_length * cols_length; // Input space dimension
 constexpr nat_t output_dim  = 10; // Output space dimension
 val_t (*const transfert_function)(val_t) = [](val_t x) { return val_t(1) / (val_t(1) + ::std::exp(-x)); }; // Transfert function used
-val_t const value_valid    = 0.75; // Value for "valid dimension"
-val_t const value_invalid  = 0.25; // Value for "invalid dimension"
-val_t const margin_valid   = 0.25; // Margin for "valid dimension"
-val_t const margin_invalid = 0.25; // Margin for "invalid dimensions"
+val_t const value_valid    = 0.8; // Value for "valid dimension"
+val_t const value_invalid  = 0.2; // Value for "invalid dimension"
+val_t const margin_valid   = 0.2; // Margin for "valid dimension"
+val_t const margin_invalid = 0.3; // Margin for "invalid dimensions"
 val_t const eta = 0.01; // Learning rate
 
 /** Input vector.
@@ -352,6 +352,17 @@ Tests tests;
 // Transfert function
 Transfert transfert;
 
+/** Initialize the transfert function.
+ * @return True on success, false otherwise
+**/
+static bool init_transfert() {
+    if (!transfert.set(transfert_function, -5, 5, 1001)) {
+        ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
+        return false;
+    }
+    return true;
+}
+
 // Network to use
 Net network(transfert);
 
@@ -366,24 +377,13 @@ Net network(transfert);
  * @return Return code
 **/
 int train(int argc, char** argv) {
-    switch (argc) {
-        case 4: { // Without correction
-            if (!transfert.set(transfert_function, -5, 5, 1001)) {
-                ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
-                return 1;
-            }
-        } break;
-        case 6: { // With correction
-            Transfert::Correction correct(::std::atof(argv[4]), ::std::atof(argv[5]));
-            if (!transfert.set(transfert_function, -5, 5, 1001, &correct)) {
-                ::std::cerr << "Precache of the transfert function (corrected) failed" << ::std::endl;
-                return 1;
-            }
-        } break;
-        default: // Wrong number of parameters
-            ::std::cerr << "Usage: " << argv[0] << " " << argv[1] << " <training images> <training labels> [limit squareness] | 'raw trained network'" << ::std::endl;
-            return 0;
+    if (argc < 4 || argc > 5) { // Wrong number of parameters
+        ::std::cerr << "Usage: " << argv[0] << " " << argv[1] << " <training images> <training labels> [limit] | 'raw trained network'" << ::std::endl;
+        return 0;
     }
+    val_t limit = (argc == 5 ? static_cast<val_t>(::std::atof(argv[4])) : 0);
+    if (!init_transfert()) // Initialize transfert function
+        return 1;
     { // Loading phase
         ::std::cerr << "Loading training files...";
         ::std::cerr.flush();
@@ -415,7 +415,7 @@ int train(int argc, char** argv) {
         ::std::cerr.flush();
         nat_t step = 0;
         while (true) {
-            nat_t count = discipline.correct(network, eta);
+            nat_t count = discipline.correct(network, eta, limit);
             ::std::cerr << "\rLearning phase... epoch " << ++step << ": " << count << "          ";
             if (count == 0)
                 break;
@@ -441,12 +441,8 @@ int test(int argc, char** argv) {
         ::std::cerr << "Usage: 'raw trained network' | " << argv[0] << " " << argv[1]  << " <test images> <test labels>" << ::std::endl;
         return 0;
     }
-    { // Initialize transfert function
-        if (!transfert.set(transfert_function, -5, 5, 1001)) {
-            ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
-            return 1;
-        }
-    }
+    if (!init_transfert()) // Initialize transfert function
+        return 1;
     { // Loading phase
         ::std::cerr << "Loading testing files...";
         ::std::cerr.flush();
@@ -480,28 +476,14 @@ int test(int argc, char** argv) {
  * @return Return code
 **/
 int plot(int argc, char** argv) {
-    switch (argc) {
-        case 2: {
-            if (!transfert.set(transfert_function, -5, 5, 1001)) {
-                ::std::cerr << "Precache of the transfert function failed" << ::std::endl;
-                return 1;
-            }
-            transfert.print(::std::cout);
-            return 0;
-        }
-        case 4: {
-            Transfert::Correction correct(::std::atof(argv[2]), ::std::atof(argv[3]));
-            if (!transfert.set(transfert_function, -5, 5, 1001, &correct)) {
-                ::std::cerr << "Precache of the transfert function (corrected) failed" << ::std::endl;
-                return 1;
-            }
-            transfert.print(::std::cout);
-            return 0;
-        }
-        default: // Wrong number of parameters
-            ::std::cerr << "Usage: " << argv[0] << " " << argv[1]  << " [limit squareness] | 'plot points'" << ::std::endl;
-            return 0;
+    if (argc != 2) { // Wrong number of parameters
+        ::std::cerr << "Usage: " << argv[0] << " " << argv[1]  << " | 'plot points'" << ::std::endl;
+        return 0;
     }
+    if (!init_transfert()) // Initialize transfert function
+        return 1;
+    transfert.print(::std::cout);
+    return 0;
 }
 
 // ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――

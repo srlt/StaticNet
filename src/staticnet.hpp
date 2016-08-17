@@ -134,30 +134,6 @@ namespace StaticNet {
 class Transfert final {
 private:
     constexpr static val_t diff_delta = 0.0001; // Delta for derivative estimation
-public:
-    /** Weight correction class, to try and increase robustness.
-    **/
-    class Correction final {
-    private:
-        val_t limit;  // Limit value (for which |x| the correction crosses ±1), must be > 0
-        val_t square; // "Squareness" of the function, must be > 0
-    public:
-        /** Initialize the correction parameters.
-         * @param limit  Limit value
-         * @param square "Squareness"
-        **/
-        Correction(val_t limit, val_t square): limit(limit), square(square) {}
-    public:
-        /** Compute the correction.
-         * @param x Weight value
-         * @return Correction weight value
-        **/
-        val_t operator()(val_t x) const {
-            val_t prod = limit * square;
-            val_t exp_prod = ::std::exp(2 * prod);
-            return exp_prod / (square * (exp_prod - 1)) * ::std::log((::std::exp(prod + square * x) + 1) / (::std::exp(prod) + ::std::exp(square * x)));
-        }
-    };
 private:
     nat_t  count; // Nb points
     val_t  x_min; // Min input
@@ -165,11 +141,10 @@ private:
     val_t  delta; // dx between points
     val_t* tbase; // Points of base function (null if not initialized)
     val_t* tdiff; // Points of derived function (= base + prec)
-    val_t* tcorr; // Weight correction function (null for none)
 private:
     /** Function type selector.
     **/
-    enum class select { base, diff, corr }; // Function type selector
+    enum class select { base, diff }; // Function type selector
     /** Select a table.
      * @param func Table to select
      * @return Selected table
@@ -180,8 +155,6 @@ private:
                 return tbase;
             case select::diff:
                 return tdiff;
-            case select::corr:
-                return tcorr;
         }
     }
     /** Interpolate (linearly) a value through this function/its derivative/other.
@@ -230,15 +203,6 @@ public:
     val_t diff(val_t x) const {
         return interpolate<select::diff>(x);
     }
-    /** Apply a weight correction, if defined.
-     * @param weight Input weight
-     * @return Corrected weight
-    **/
-    val_t corr(val_t weight) const {
-        if (!tcorr) // Nothing to do
-            return weight;
-        return interpolate<select::corr>(weight);
-    }
     /** (Re)set the transfert function, with optional weight correction.
      * @param trans Transfert function
      * @param min   Min input
@@ -247,20 +211,19 @@ public:
      * @param corr  Weight correction (optional)
      * @return True if the operation is a success, false otherwise
     **/
-    bool set(val_t trans(val_t), val_t min, val_t max, nat_t prec, Correction const* corr = null) {
+    bool set(val_t trans(val_t), val_t min, val_t max, nat_t prec) {
         if (unlikely(min >= max || prec < 2)) // Basic checks
             return false;
         { // Points table allocation
             if (tbase) // Points table freeing (if already exists)
                 ::std::free(static_cast<void*>(tbase));
-            void* addr = ::std::malloc((corr ? 3 : 2) * prec * sizeof(val_t));
+            void* addr = ::std::malloc(2 * prec * sizeof(val_t));
             if (!addr) { // Allocation failure
                 tbase = null;
                 return false;
             }
             tbase = static_cast<val_t*>(addr);
             tdiff = tbase + prec;
-            tcorr = (corr ? tdiff + prec : null);
         }
         { // Tables initialization
             delta = (max - min) / static_cast<val_t>(prec - 1);
@@ -268,11 +231,6 @@ public:
             for (val_t x = min; i < prec; x += delta, i++) { // Base and diff
                 tbase[i] = trans(x);
                 tdiff[i] = (trans(x + diff_delta / 2) - trans(x - diff_delta / 2)) / diff_delta;
-            }
-            if (corr) {
-                i = 0;
-                for (val_t x = min; i < prec; x += delta, i++) // Corr
-                    tcorr[i] = (*corr)(x);
             }
         }
         { // Basic finalization
@@ -288,7 +246,7 @@ public:
     **/
     void print(::std::ostream& ostr) const {
         for (val_t x = x_min - 1; x <= x_max + 1; x += delta)
-            ostr << x << "\t" << interpolate<select::base>(x) << "\t" << interpolate<select::diff>(x) << "\t" << corr(x) << ::std::endl;
+            ostr << x << "\t" << interpolate<select::base>(x) << "\t" << interpolate<select::diff>(x) << ::std::endl;
     }
 };
 
@@ -533,14 +491,27 @@ public:
      * @param input Input vector
      * @param sum   Sum of weighted inputs
      * @param error Sum of weighted errors
-     * @param eta   Correction factor
      * @param trans Transfert function
+     * @param eta   Correction factor
+     * @param limit Weight absolute value limit (optional, <= 0 for none)
      * @return Error scalar
     **/
-    val_t correct(Vector<input_dim> const& input, val_t sum, val_t error, val_t eta, Transfert const& trans) {
+    template<class Limit = ::std::ratio<0, 1>> val_t correct(Vector<input_dim> const& input, val_t sum, val_t error, Transfert const& trans, val_t eta, val_t limit = 0) {
         val_t err = error * trans.diff(sum);
-        for (nat_t i = 0; i < input_dim; i++)
-            weight.set(i, trans.corr(weight.get(i) + eta * err * input.get(i)));
+        if (limit > 0) { // Limit exists
+            for (nat_t i = 0; i < input_dim; i++) {
+                val_t update = weight.get(i) + eta * err * input.get(i);
+                if (update > limit) {
+                    update = limit;
+                } else if (update < -limit) {
+                    update = -limit;
+                }
+                weight.set(i, update);
+            }
+        } else {
+            for (nat_t i = 0; i < input_dim; i++)
+                weight.set(i, weight.get(i) + eta * err * input.get(i));
+        }
         bias += eta * err;
         return err;
     }
@@ -623,13 +594,14 @@ public:
      * @param sums      Sum of weighted inputs vector
      * @param error     Sum of weighted errors vector
      * @param eta       Correction factor
+     * @param limit     Weight absolute value limit (optional, <= 0 for none)
      * @param error_out Sum of weighted errors vector (optional)
     **/
-    void correct(Vector<input_dim> const& input, Vector<output_dim> const& sums, Vector<output_dim> const& error, val_t eta, Vector<input_dim>* error_out = null) {
+    void correct(Vector<input_dim> const& input, Vector<output_dim> const& sums, Vector<output_dim> const& error, val_t eta, val_t limit = 0, Vector<input_dim>* error_out = null) {
         if (error_out) { // Error vector asked
             Vector<output_dim> errors; // Neuron errors
             for (nat_t i = 0; i < output_dim; i++)
-                errors.set(i, neurons[i].correct(input, sums.get(i), error.get(i), eta, trans));
+                errors.set(i, neurons[i].correct(input, sums.get(i), error.get(i), trans, eta, limit));
             for (nat_t i = 0; i < input_dim; i++) { // Compute error vector
                 val_t sum = 0; // Sum of weighted error
                 for (nat_t j = 0; j < output_dim; j++)
@@ -638,7 +610,7 @@ public:
             }
         } else {
             for (nat_t i = 0; i < output_dim; i++)
-                neurons[i].correct(input, sums.get(i), error.get(i), eta, trans);
+                neurons[i].correct(input, sums.get(i), error.get(i), trans, eta, limit);
         }
     }
 public:
@@ -716,17 +688,18 @@ public:
     /** Compute then reduce the quadratic error of the network.
      * @param input     Input vector
      * @param expected  Expected output vector
-     * @param eta       Correction factor
      * @param error     Error vector (output)
+     * @param eta       Correction factor
+     * @param limit     Weight absolute value limit per neuron (optional, <= 0 for none)
      * @param error_out <Reserved>
     **/
-    template<nat_t implicit_dim> void correct(Vector<input_dim> const& input, Vector<implicit_dim> const& expected, val_t eta, Vector<implicit_dim>& error, Vector<input_dim>* error_out = null) {
+    template<class Limit = ::std::ratio<0, 1>, nat_t implicit_dim> void correct(Vector<input_dim> const& input, Vector<implicit_dim> const& expected, Vector<implicit_dim>& error, val_t eta, val_t limit = 0, Vector<input_dim>* error_out = null) {
         Vector<inter_dim> local_output;
         Vector<inter_dim> local_sums;
         layer.compute(input, local_output, &local_sums);
         Vector<inter_dim> local_error;
-        layers.correct(local_output, expected, eta, error, &local_error);
-        layer.correct(input, local_sums, local_error, eta, error_out);
+        layers.correct(local_output, expected, error, eta, limit, &local_error);
+        layer.correct(input, local_sums, local_error, eta, limit / inter_dim, error_out);
     }
 public:
     /** Return the size of the structure.
@@ -786,17 +759,18 @@ public:
     /** Compute then reduce the quadratic error of the network.
      * @param input     Input vector
      * @param expected  Expected output vector
-     * @param eta       Correction factor
      * @param error     Error vector (output)
+     * @param eta       Correction factor
+     * @param limit     Weight absolute value limit per neuron (optional, <= 0 for none)
      * @param error_out <Reserved>
     **/
-    void correct(Vector<input_dim> const& input, Vector<output_dim> const& expected, val_t eta, Vector<output_dim>& error, Vector<input_dim>* error_out = null) {
+    void correct(Vector<input_dim> const& input, Vector<output_dim> const& expected, Vector<output_dim>& error, val_t eta, val_t limit = 0, Vector<input_dim>* error_out = null) {
         Vector<output_dim> local_output;
         Vector<output_dim> local_sums;
         layer.compute(input, local_output, &local_sums);
         for (nat_t i = 0; i < output_dim; i++)
             error.set(i, expected.get(i) - local_output.get(i));
-        layer.correct(input, local_sums, error, eta, error_out);
+        layer.correct(input, local_sums, error, eta, limit / output_dim, error_out);
     }
 public:
     /** Return the size of the structure.
@@ -874,15 +848,16 @@ private:
         /** Correct the network one time, if needed.
          * @param network Neural network to correct
          * @param eta     Correction factor
+         * @param limit   Weight absolute value limit per neuron (optional, <= 0 for none)
          * @return True if on bounds, false if a correction has been applied
         **/
-        template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, val_t eta) {
+        template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, val_t eta, val_t limit = 0) {
             Output output; // Output vector
             network.compute(input, output);
             for (nat_t i = 0; i < output_dim; i++) { // Check for bounds
                 val_t diff = expected.get(i) - output.get(i);
                 if ((diff < 0 ? -diff : diff) > margin.get(i)) { // Out of at least one bound
-                    network.correct(input, expected, eta, output);
+                    network.correct(input, expected, output, eta, limit);
                     return false;
                 }
             }
@@ -951,12 +926,13 @@ public:
     /** Correct the network one time, so that each output is near enough from its expected output.
      * @param network Neural network to correct
      * @param eta     Correction factor
+     * @param limit   Weight absolute value limit per neuron (optional, <= 0 for none)
      * @return Number of out-bounds constraints
     **/
-    template<nat_t... implicit_dims> nat_t correct(Network<implicit_dims...>& network, val_t eta) {
+    template<nat_t... implicit_dims> nat_t correct(Network<implicit_dims...>& network, val_t eta, val_t limit = 0) {
         nat_t count = 0;
         for (Constraint& constraint: constraints) {
-            if (!constraint.correct(network, eta)) // Not in-bounds
+            if (!constraint.correct(network, eta, limit)) // Not in-bounds
                 count++;
         }
         return count;
