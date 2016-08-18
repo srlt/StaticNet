@@ -133,7 +133,7 @@ namespace StaticNet {
 **/
 class Transfert final {
 private:
-    constexpr static val_t diff_delta = 0.0001; // Delta for derivative estimation
+    constexpr static val_t diff_delta = 0.01; // Delta for derivative estimation
 private:
     nat_t  count; // Nb points - 1
     val_t  x_min; // Min input
