@@ -496,7 +496,7 @@ public:
      * @param limit Weight absolute value limit (optional, <= 0 for none)
      * @return Error scalar
     **/
-    template<class Limit = ::std::ratio<0, 1>> val_t correct(Vector<input_dim> const& input, val_t sum, val_t error, Transfert const& trans, val_t eta, val_t limit = 0) {
+    val_t correct(Vector<input_dim> const& input, val_t sum, val_t error, Transfert const& trans, val_t eta, val_t limit = 0) {
         val_t err = error * trans.diff(sum);
         if (limit > 0) { // Limit exists
             for (nat_t i = 0; i < input_dim; i++) {
@@ -690,16 +690,16 @@ public:
      * @param expected  Expected output vector
      * @param error     Error vector (output)
      * @param eta       Correction factor
-     * @param limit     Weight absolute value limit per neuron (optional, <= 0 for none)
+     * @param limit     Weight absolute value limit times input synapses (optional, <= 0 for none)
      * @param error_out <Reserved>
     **/
-    template<class Limit = ::std::ratio<0, 1>, nat_t implicit_dim> void correct(Vector<input_dim> const& input, Vector<implicit_dim> const& expected, Vector<implicit_dim>& error, val_t eta, val_t limit = 0, Vector<input_dim>* error_out = null) {
+    template<nat_t implicit_dim> void correct(Vector<input_dim> const& input, Vector<implicit_dim> const& expected, Vector<implicit_dim>& error, val_t eta, val_t limit = 0, Vector<input_dim>* error_out = null) {
         Vector<inter_dim> local_output;
         Vector<inter_dim> local_sums;
         layer.compute(input, local_output, &local_sums);
         Vector<inter_dim> local_error;
         layers.correct(local_output, expected, error, eta, limit, &local_error);
-        layer.correct(input, local_sums, local_error, eta, limit / inter_dim, error_out);
+        layer.correct(input, local_sums, local_error, eta, limit / input_dim, error_out);
     }
 public:
     /** Return the size of the structure.
@@ -761,7 +761,7 @@ public:
      * @param expected  Expected output vector
      * @param error     Error vector (output)
      * @param eta       Correction factor
-     * @param limit     Weight absolute value limit per neuron (optional, <= 0 for none)
+     * @param limit     Weight absolute value limit times input synapses (optional, <= 0 for none)
      * @param error_out <Reserved>
     **/
     void correct(Vector<input_dim> const& input, Vector<output_dim> const& expected, Vector<output_dim>& error, val_t eta, val_t limit = 0, Vector<input_dim>* error_out = null) {
@@ -770,7 +770,7 @@ public:
         layer.compute(input, local_output, &local_sums);
         for (nat_t i = 0; i < output_dim; i++)
             error.set(i, expected.get(i) - local_output.get(i));
-        layer.correct(input, local_sums, error, eta, limit / output_dim, error_out);
+        layer.correct(input, local_sums, error, eta, limit / input_dim, error_out);
     }
 public:
     /** Return the size of the structure.
@@ -848,7 +848,7 @@ private:
         /** Correct the network one time, if needed.
          * @param network Neural network to correct
          * @param eta     Correction factor
-         * @param limit   Weight absolute value limit per neuron (optional, <= 0 for none)
+         * @param limit   Weight absolute value limit times input synapses (optional, <= 0 for none)
          * @return True if on bounds, false if a correction has been applied
         **/
         template<nat_t... implicit_dims> bool correct(Network<implicit_dims...>& network, val_t eta, val_t limit = 0) {
@@ -926,7 +926,7 @@ public:
     /** Correct the network one time, so that each output is near enough from its expected output.
      * @param network Neural network to correct
      * @param eta     Correction factor
-     * @param limit   Weight absolute value limit per neuron (optional, <= 0 for none)
+     * @param limit   Weight absolute value limit times input synapses (optional, <= 0 for none)
      * @return Number of out-bounds constraints
     **/
     template<nat_t... implicit_dims> nat_t correct(Network<implicit_dims...>& network, val_t eta, val_t limit = 0) {
