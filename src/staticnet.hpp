@@ -135,10 +135,10 @@ class Transfert final {
 private:
     constexpr static val_t diff_delta = 0.0001; // Delta for derivative estimation
 private:
-    nat_t  count; // Nb points
+    nat_t  count; // Nb points - 1
     val_t  x_min; // Min input
     val_t  x_max; // Max input
-    val_t  delta; // dx between points
+    val_t  delta; // Difference between max/min
     val_t* tbase; // Points of base function (null if not initialized)
     val_t* tdiff; // Points of derived function (= base + prec)
 private:
@@ -166,16 +166,16 @@ private:
         if (unlikely(x < x_min)) {
             return get<func>()[0];
         } else if (unlikely(x >= x_max)) {
-            return get<func>()[count - 1];
+            return get<func>()[count];
         } // Else linear interpolation
-        nat_t i = static_cast<nat_t>((x - x_min) / delta);
-        if (unlikely(i + 1 >= count)) { // Due to floating-point imprecision
-            return get<func>()[count - 1];
+        val_t t = (x - x_min) * static_cast<val_t>(count) / delta;
+        nat_t i = static_cast<nat_t>(t); // Truncated
+        if (unlikely(i >= count)) { // Due to floating-point imprecision
+            return get<func>()[count];
         } else {
-            val_t f = (x - (x_min + static_cast<val_t>(i) * delta)) / delta;
             val_t y_a = get<func>()[i];
             val_t y_b = get<func>()[i + 1];
-            return y_a + (y_b - y_a) * f;
+            return y_a + (y_b - y_a) * ::std::fmod(t, val_t(1));
         }
     }
 public:
@@ -226,17 +226,16 @@ public:
             tdiff = tbase + prec;
         }
         { // Tables initialization
-            delta = (max - min) / static_cast<val_t>(prec - 1);
-            nat_t i = 0;
-            for (val_t x = min; i < prec; x += delta, i++) { // Base and diff
+            x_min = min;
+            x_max = max;
+            delta = max - min;
+            count = prec - 1;
+            val_t const prec1 = static_cast<val_t>(prec - 1);
+            for (nat_t i = 0; i < prec; i++) { // Base and diff
+                val_t x = delta * static_cast<val_t>(i) / prec1 + x_min;
                 tbase[i] = trans(x);
                 tdiff[i] = (trans(x + diff_delta / 2) - trans(x - diff_delta / 2)) / diff_delta;
             }
-        }
-        { // Basic finalization
-            count = prec;
-            x_min = min;
-            x_max = max;
         }
         return true;
     }
@@ -245,8 +244,11 @@ public:
      * @param ostr Output stream
     **/
     void print(::std::ostream& ostr) const {
-        for (val_t x = x_min - 1; x <= x_max + 1; x += delta)
+        val_t const prec1 = static_cast<val_t>(count);
+        for (nat_t i = 0; i <= count; i++) { // Base and diff
+            val_t x = delta * static_cast<val_t>(i) / prec1 + x_min;
             ostr << x << "\t" << interpolate<select::base>(x) << "\t" << interpolate<select::diff>(x) << ::std::endl;
+        }
     }
 };
 
