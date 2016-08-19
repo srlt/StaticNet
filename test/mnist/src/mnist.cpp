@@ -26,7 +26,9 @@
 // External headers
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 extern "C" {
 #include <fcntl.h>
@@ -53,7 +55,7 @@ constexpr nat_t rows_length = 28; // Image row length
 constexpr nat_t cols_length = 28; // Image col length
 constexpr nat_t input_dim   = rows_length * cols_length; // Input space dimension
 constexpr nat_t output_dim  = 10; // Output space dimension
-val_t (*const transfert_function)(val_t) = [](val_t x) -> val_t { return val_t{1} / (val_t{1} + ::std::exp(-x)); }; // Transfert function used
+val_t (*const transfert_function)(val_t) = [](val_t x) -> val_t { return val_t(1) / (val_t(1) + ::std::exp(-x)); }; // Transfert function used
 val_t const value_valid    = 0.8; // Value for "valid dimension"
 val_t const value_invalid  = 0.2; // Value for "invalid dimension"
 val_t const margin_valid   = 0.2; // Margin for "valid dimension"
@@ -298,8 +300,35 @@ private:
     /** A labelled test image.
     **/
     class Image final {
-        friend Tests; // Direct access for initialization
     private:
+        /** PGM binary data (256 colors) output serializer.
+        **/
+        class PGM final: public Serializer::Output {
+        private:
+            ::std::ofstream& file; // Output file
+        public:
+            /** File initializer.
+             * @param file File stream to initialize with
+            **/
+            PGM(::std::ofstream& file): file(file) {}
+        public:
+            /** Store a pixel to the file.
+             * @param level Color level (-1 white ... +1 black)
+            **/
+            virtual void store(val_t value) {
+                uint8_t pixel;
+                value = val_t(255) - (value + val_t(1)) * val_t(128);
+                if (value < 1) {
+                    pixel = 0;
+                } else if (value > 254) {
+                    pixel = 255;
+                } else {
+                    pixel = static_cast<uint8_t>(value);
+                }
+                file.write(reinterpret_cast<::std::remove_reference<decltype(file)>::type::char_type*>(&pixel), sizeof(uint8_t));
+            }
+        };
+    public:
         Input image; // Associated input vector
         nat_t label; // Number represented
     public:
@@ -307,10 +336,20 @@ private:
          * @param network Network to test
          * @return True on a correct answer, false otherwise
         **/
-        template<nat_t... implicit_dims> bool check(Network<implicit_dims...>& network) const {
+        template<nat_t... implicit_dims> bool check(Network<implicit_dims...>& network, nat_t& guess) const {
             Output result;
             network.compute(image, result);
-            return Helper::vector_to_label(result) == label;
+            guess = Helper::vector_to_label(result);
+            return guess == label;
+        }
+        /** Output the picture to the given file, overwrite the file.
+         * @param filename File to write
+        **/
+        void output(::std::string& filename) const {
+            ::std::ofstream file(filename);
+            file << "P5\n28 28 255\n";
+            PGM serializer(file);
+            image.store(serializer);
         }
     };
 private:
@@ -328,14 +367,21 @@ public:
         }
     }
     /** Test network on the testing set.
-     * @param network Network to test
+     * @param network  Network to test
+     * @param errordir Directory to which failed test image are output (optional, null for no output)
      * @return Number of success, number of test elements
     **/
-    template<nat_t... implicit_dims> ::std::tuple<nat_t, nat_t> test(Network<implicit_dims...>& network) const {
+    template<nat_t... implicit_dims> ::std::tuple<nat_t, nat_t> test(Network<implicit_dims...>& network, char const* const errordir = null) const {
         nat_t count = 0; // Success counter
+        nat_t error = 0; // Error counter
         for (Image const& test: tests) {
-            if (test.check(network))
+            nat_t guess;
+            if (test.check(network, guess)) {
                 count++;
+            } else if (errordir) {
+                ::std::string filename = ::std::string(errordir) + "/" + ::std::to_string(error++) + "_guessed_" + ::std::to_string(guess) + "_for_" + ::std::to_string(test.label) + ".pgm";
+                test.output(filename);
+            }
         }
         return ::std::make_tuple(count, static_cast<nat_t>(tests.size()));
     }
@@ -437,8 +483,8 @@ int train(int argc, char** argv) {
  * @return Return code
 **/
 int test(int argc, char** argv) {
-    if (argc != 4) { // Wrong number of parameters
-        ::std::cerr << "Usage: 'raw trained network' | " << argv[0] << " " << argv[1]  << " <test images> <test labels>" << ::std::endl;
+    if (argc < 4 || argc > 5) { // Wrong number of parameters
+        ::std::cerr << "Usage: 'raw trained network' | " << argv[0] << " " << argv[1]  << " <test images> <test labels> [path/to/error/directory]" << ::std::endl;
         return 0;
     }
     if (!init_transfert()) // Initialize transfert function
@@ -464,7 +510,7 @@ int test(int argc, char** argv) {
         ::std::cerr.flush();
         nat_t success;
         nat_t total;
-        ::std::tie(success, total) = tests.test(network);
+        ::std::tie(success, total) = tests.test(network, (argc == 5 ? argv[4] : null));
         ::std::cerr << " " << success << "/" << total << ::std::endl;
     }
     return 0;
@@ -509,7 +555,7 @@ int main(int argc, char** argv) {
     if (argc < 2 || orders.count(argv[1]) == 0) { // Wrong number of parameters or unknown order
         ::std::cerr << "Usage: " << (argc != 0 ? argv[0] : "mnist") << " {";
         bool first = true;
-        for(auto const& i: orders) {
+        for (auto const& i: orders) {
             if (first) {
                 first = false;
             } else {
