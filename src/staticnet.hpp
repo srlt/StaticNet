@@ -175,7 +175,7 @@ private:
         } else {
             val_t y_a = get<func>()[i];
             val_t y_b = get<func>()[i + 1];
-            return y_a + (y_b - y_a) * ::std::fmod(t, val_t(1));
+            return y_a + (y_b - y_a) * ::std::fmod(t, val_t{1});
         }
     }
 public:
