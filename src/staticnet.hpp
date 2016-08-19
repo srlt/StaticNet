@@ -422,7 +422,7 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() const {
+    static constexpr size_t size() {
         return dim * sizeof(val_t);
     }
     /** Load vector data.
@@ -521,8 +521,8 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() const {
-        return weight.size() + sizeof(val_t);
+    static constexpr size_t size() {
+        return decltype(weight)::size() + sizeof(val_t);
     }
     /** Load neuron data.
      * @param input Serialized input
@@ -619,10 +619,10 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() const {
+    static constexpr size_t size() {
         size_t size = 0;
         for (nat_t i = 0; i < output_dim; i++)
-            size += neurons[i].size();
+            size += decltype(*neurons)::size();
         return size;
     }
     /** Load layer data.
@@ -707,8 +707,8 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() const {
-        return layer.size() + layers.size();
+    static constexpr size_t size() {
+        return decltype(layer)::size() + decltype(layers)::size();
     }
     /** Load layer data.
      * @param input Serialized input
@@ -778,8 +778,8 @@ public:
     /** Return the size of the structure.
      * @return Size of the structure, in bytes
     **/
-    constexpr size_t size() const {
-        return layer.size();
+    static constexpr size_t size() {
+        return decltype(layer)::size();
     }
     /** Load layer data.
      * @param input Serialized input
