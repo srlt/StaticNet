@@ -175,7 +175,7 @@ private:
         } else {
             val_t y_a = get<func>()[i];
             val_t y_b = get<func>()[i + 1];
-            return y_a + (y_b - y_a) * ::std::fmod(t, val_t{1});
+            return y_a + (y_b - y_a) * ::std::fmod(t, val_t(1));
         }
     }
 public:
@@ -300,7 +300,7 @@ public:
     **/
     val_t load() {
         val_t value;
-        istream.read(reinterpret_cast<::std::istream::char_type*>(&value), sizeof(val_t));
+        istream.read(reinterpret_cast<::std::remove_reference<decltype(istream)>::type::char_type*>(&value), sizeof(val_t));
         return value;
     }
 };
@@ -320,7 +320,7 @@ public:
      * @param value Value stored
     **/
     void store(val_t value) {
-        ostream.write(reinterpret_cast<::std::istream::char_type*>(&value), sizeof(val_t));
+        ostream.write(reinterpret_cast<::std::remove_reference<decltype(ostream)>::type::char_type*>(&value), sizeof(val_t));
     }
 };
 
